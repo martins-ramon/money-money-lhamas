@@ -2,7 +2,7 @@ import './style.css';
 import { icon, llamaLogo } from './icons.js';
 import { JOBS, STOCKS, CHAPTERS, money, initialState, loadGame, act, liquid, portfolio, wealth, chapter, income, upgradeCost, completed, SAVE_KEY } from './model.js';
 import { World, preview } from './world.js';
-import { playShift, defendMansion } from './minigames.js';
+import { playShift, defendMansion, playQuiz } from './minigames.js';
 
 const TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 if (TOUCH) document.body.classList.add('touch-device');
@@ -17,7 +17,7 @@ function sfx(kind) {
   try {
     audio ??= new (window.AudioContext || window.webkitAudioContext)();
     const o = audio.createOscillator(), g = audio.createGain(); o.connect(g); g.connect(audio.destination);
-    const notes = { coin: [880, 1320], ok: [523, 659, 784], bad: [220, 180], alert: [660, 440, 660, 440], cash: [660, 880, 1100] }[kind] || [600];
+    const notes = { coin: [880, 1320], ok: [523, 659, 784], bad: [220, 180], bonk: [300, 520, 240], alert: [660, 440, 660, 440], cash: [660, 880, 1100] }[kind] || [600];
     o.type = kind === 'bad' ? 'sawtooth' : 'triangle'; g.gain.value = 0.08;
     notes.forEach((f, i) => o.frequency.setValueAtTime(f, audio.currentTime + i * 0.09));
     g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + notes.length * 0.09 + 0.15);
@@ -99,7 +99,7 @@ function objective() {
     case 'robbery': return `${icon('pin', 16)} Two years later… head to your <b>mansion</b>. Something feels off.`;
     case 'business': return `${icon('chart', 16)} Grow <b>Llama Labs</b> and your stocks until your net worth hits <b>$1B</b> — now ${money(wealth(s), true)}.`;
     case 'moon': return `${icon('moon', 16)} Meet <b>Elo Musk</b> at the Moon house to sign the deal.`;
-    case 'freeplay': return s.celebration ? `${icon('trophy', 16)} You did it! Keep exploring the free world.` : `${icon('map', 16)} Free world! Complete side missions <b>(${s.sideQuests.length}/3)</b> and start the <b>BBQ party</b>.`;
+    case 'freeplay': return s.celebration ? `${icon('trophy', 16)} You did it! Keep exploring the free world.` : `${icon('map', 16)} Free world! Complete side missions <b>(${s.sideQuests.length}/3)</b> — picnic, explorer and the <b>math homework quiz</b> — then start the <b>BBQ party</b>.`;
     default: return '';
   }
 }
@@ -129,7 +129,7 @@ function titleScreen() {
       <p class="credits">${TOUCH ? 'Drag the joystick to walk · swipe the right side to look around · big buttons to jump and act.' : 'WASD / arrows to walk · drag the mouse to look · Space to jump · E to interact.'}</p>
     </div>`, 'scene');
   const stops = [...el.querySelectorAll('[data-pick]')].map(b => preview(b.querySelector('canvas'), b.dataset.pick === 'anna' ? 'Girlfriend' : 'Street dreamer', b.dataset.pick === 'anna' ? 0xfff1d6 : 0xe8caa4));
-  const begin = () => { stops.forEach(s => s()); close(); hud.classList.remove('hidden'); $('[data-touch]').classList.toggle('hidden', !TOUCH); syncHUD(); if (!state.shifts || !Object.keys(state.shifts).length) intro(); scheduleRent(); };
+  const begin = () => { stops.forEach(s => s()); close(); hud.classList.remove('hidden'); $('[data-touch]').classList.toggle('hidden', !TOUCH); syncHUD(); if (!state.shifts || !Object.keys(state.shifts).length) intro(); if (state.stage === 'timeskip') pendingStages.push(['careers', 'timeskip']); scheduleRent(); };
   el.querySelectorAll('[data-pick]').forEach(b => (b.onclick = () => { if (state.started && state.character !== b.dataset.pick && !confirm('Start a brand new adventure? Your current progress will be replaced.')) return; if (!state.started || state.character !== b.dataset.pick) { state = initialState(); } dispatch({ type: 'start', character: b.dataset.pick }); begin(); }));
   el.querySelector('[data-continue]')?.addEventListener('click', begin);
 }
@@ -147,7 +147,7 @@ function intro() {
 }
 
 function paycheck(job) {
-  const s = state, interest = s.ledger.find(e => e.label.startsWith('Savings interest'))?.amount || 0, goal = ['beginning', 'purchase'].includes(s.stage) ? 1000 : null;
+  const s = state, interest = s.ledger[1]?.label.startsWith('Savings interest') ? s.ledger[1].amount : 0, goal = ['beginning', 'purchase'].includes(s.stage) ? 1000 : null;
   const el = open(`
     ${head(`Payday at ${job.name}!`, `You earned <b>${money(job.pay)}</b> as a ${job.role.toLowerCase()}.`)}
     <div class="card stack">
@@ -205,6 +205,7 @@ function menuPanel() {
     <div class="card stack">
       <p><b>How to play:</b> ${TOUCH ? 'joystick to walk, swipe the right side of the screen to look, and use the big buttons to jump and act.' : 'WASD or arrows to walk, drag the mouse to look around, Space to jump, E to interact.'}</p>
       <p><b>Rent alert:</b> when Mr. Barriga shows up you have 40 seconds to hide in a bush. If he finds you, rent is $200. If he doesn’t, you pocket $500!</p>
+      <p><b>Chaos mode:</b> run or jump into the townsfolk llamas to send them flying. It’s free, it’s silly, and it teaches nothing about finance.</p>
       <div class="row"><button class="btn ghost" data-mute>${icon(state.muted ? 'mute' : 'sound')} Sound ${state.muted ? 'off' : 'on'}</button><button class="btn coral" data-reset>${icon('reset')} New game</button></div>
     </div>`);
   el.querySelector('[data-mute]').onclick = () => { dispatch({ type: 'mute' }); menuPanel(); };
@@ -265,7 +266,7 @@ function businessPanel() {
 }
 
 /* ---------- Cutscenes ---------- */
-function cutscene(html, cls = 'scene') { return new Promise(res => { const el = open(`<div class="card stack" style="text-align:center;justify-items:center">${html}<button class="btn" data-next>${icon('arrow')} Continue</button></div>`, cls); el.querySelector('[data-next]').onclick = () => { close(); res(); }; }); }
+function cutscene(html, cls = 'scene') { return new Promise(res => { const el = open(`<div class="card stack" data-locked style="text-align:center;justify-items:center">${html}<button class="btn" data-next>${icon('arrow')} Continue</button></div>`, cls); el.querySelector('[data-next]').onclick = () => { close(); res(); }; }); }
 async function onStageChange(from, to) {
   if (to === 'purchase') { toast('Goal reached! Go to your plot to buy a house or a car.', 'cash'); }
   if (to === 'timeskip') {
@@ -313,7 +314,7 @@ function startRent() {
   }, 1000);
   renderRent();
 }
-function renderRent() { if (!rent) return; $('[data-rent]').innerHTML = `🧔 RENT ALERT! Hide from Mr. Barriga <span class="timer">${rent.left}</span>s ${world.isHidden() ? '<span class="hiding">🌳 hiding…</span>' : ''}`; }
+function renderRent() { if (!rent) return; const key = `${rent.left}|${world.isHidden()}`; if (rent.key === key) return; rent.key = key; $('[data-rent]').innerHTML = `🧔 RENT ALERT! Hide from Mr. Barriga <span class="timer">${rent.left}</span>s ${world.isHidden() ? '<span class="hiding">🌳 hiding…</span>' : ''}`; }
 function resolveRent(escaped) {
   if (!rent) return; clearInterval(rent.timer); rent = null; world.stopRent(); $('[data-rent]').classList.add('hidden');
   dispatch({ type: 'rent', hidden: escaped });
@@ -323,6 +324,8 @@ function resolveRent(escaped) {
 function stopRent() { if (rent) { clearInterval(rent.timer); rent = null; world.stopRent(); $('[data-rent]').classList.add('hidden'); } }
 world.onFound = () => resolveRent(false);
 world.onCoin = id => { if (dispatch({ type: 'coin', id })) toast('Lucky coin! +$25', 'coin'); };
+let bonks = 0;
+world.onBonk = () => { bonks++; sfx('bonk'); if (bonks === 1) toast('BONK! 🦙💫 Townsfolk llamas go flying when you run into them.'); };
 world.available = it => {
   if (it.type === 'job') { const job = JOBS.find(j => j.id === it.id); return job.pay === 400 || RENT_STAGES.concat('timeskip', 'robbery', 'moon').includes(state.stage); }
   if (it.type === 'hq') return !!state.company;
@@ -351,13 +354,18 @@ async function interact() {
     case 'hq': businessPanel(); break;
     case 'quest': {
       const lines = { picnic: 'A lovely picnic with your partner and a basket of alfalfa sandwiches. +$5,000 sponsorship!', explorer: 'You mapped the whole town for tourists. +$5,000!', helper: 'You helped the school kids with their financial-math homework. +$5,000!' };
+      if (it.id === 'helper') {
+        busy = true; world.frozen = true; world.keys.clear(); promptEl.classList.add('hidden');
+        const result = await playQuiz(overlayRoot); close();
+        if (!result.passed) { toast(result.quit ? 'Homework session cancelled.' : `Only ${result.correct}/${result.total} correct — the kids need at least ${result.needed}. Try again!`, 'bad'); break; }
+      }
       if (dispatch({ type: 'quest', id: it.id })) toast(lines[it.id], 'cash'); break;
     }
     case 'bbq': finale(); break;
     case 'moon': moonSequence(); break;
   }
 }
-window.addEventListener('keydown', e => { if (e.code === 'KeyE' || e.code === 'Enter') interact(); if (e.code === 'Escape' && busy && !overlayRoot.querySelector('.game')) close(); });
+window.addEventListener('keydown', e => { if (e.code === 'KeyE' || e.code === 'Enter') interact(); if (e.code === 'Escape' && busy && !overlayRoot.querySelector('.game, [data-locked]')) close(); });
 $('[data-action]').onclick = interact;
 $('[data-jump]').addEventListener('pointerdown', () => (world.jumpQueued = true));
 hud.querySelectorAll('[data-open]').forEach(b => (b.onclick = () => { if (busy) return; ({ wallet: walletPanel, wardrobe: wardrobePanel, report: reportPanel, menu: menuPanel })[b.dataset.open](); }));
@@ -401,6 +409,8 @@ function loop(now) {
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) { world.keys.clear(); world.joy.x = world.joy.y = 0; } else { lastTick = performance.now(); world.clock.getDelta(); } });
 window.addEventListener('beforeunload', save);
+// Debug hook for testing: open the game with ?debug to get window.__mml
+if (new URLSearchParams(location.search).has('debug')) window.__mml = { world, get state() { return state; }, teleport: (x, z) => world.player.pos.set(x, 0, z), dispatch };
 syncHUD();
 titleScreen();
 requestAnimationFrame(loop);
