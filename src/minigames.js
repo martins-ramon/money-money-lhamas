@@ -208,3 +208,61 @@ export function defendMansion(root, seconds = 240) {
     function finish() { running = false; clearInterval(tick); cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', onVis); resolve({ stolen, hits }); }
   });
 }
+
+/* ---------- Financial-math homework quiz (Helper mission) ---------- */
+const money = n => { const v = Math.round(n * 100) / 100; return `$${v.toLocaleString('en-US', Number.isInteger(v) ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
+const ri = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
+/** Each generator returns { q, answer, options, explain } with numeric options (answer included). */
+const QUESTIONS = [
+  () => { const P = ri(3, 12) * 100, r = pick([2, 3, 5]); const a = P * r / 100; return { q: `You keep ${money(P)} in the Piggy Bank at ${r}% interest per shift. How much interest do you earn after one shift?`, answer: a, options: [a, a * 2, a / 2, a + 10], explain: `Interest = ${money(P)} × ${r}/100 = ${money(a)}.` }; },
+  () => { const P = ri(4, 10) * 100; const a = P * 1.02 * 1.02; return { q: `${money(P)} in the Piggy Bank at 2% per shift. How much do you have after two shifts (compound interest)?`, answer: a, options: [a, P * 1.04, P * 1.02, P * 1.05], explain: `${money(P)} × 1.02 × 1.02 = ${money(a)} — the second shift also pays interest on the first interest!` }; },
+  () => { const pay = pick([400, 900]), pct = pick([10, 25, 30, 50]); const a = pay - pay * pct / 100; return { q: `You earn ${money(pay)} and spend ${pct}% on food and clothes. How much is left to save?`, answer: a, options: [a, pay * pct / 100, pay - pct, pay], explain: `${money(pay)} − ${pct}% of ${money(pay)} (${money(pay * pct / 100)}) = ${money(a)}.` }; },
+  () => { const have = ri(0, 5) * 100, goal = 1000; const a = Math.ceil((goal - have) / 400); return { q: `You have ${money(have)} and want ${money(goal)} for your first car. Each shift pays $400. How many shifts do you still need?`, answer: a, options: [a, a + 1, Math.max(1, a - 1), a + 2], explain: `(${money(goal)} − ${money(have)}) ÷ $400 = ${((goal - have) / 400).toFixed(2)}, rounded up to ${a} shifts.`, fmt: n => `${n} shift${n === 1 ? '' : 's'}` }; },
+  () => { const w = ri(1, 9) * 100, sv = ri(1, 9) * 100, sh = ri(2, 6), pr = ri(1, 5) * 50; const a = w + sv + sh * pr; return { q: `Wallet ${money(w)}, savings ${money(sv)} and ${sh} shares worth ${money(pr)} each. What is your net worth?`, answer: a, options: [a, w + sv, w + sv + pr, a + pr], explain: `Net worth = ${money(w)} + ${money(sv)} + ${sh} × ${money(pr)} = ${money(a)}.` }; },
+  () => { const esc = ri(1, 4), caught = ri(1, 3); const a = esc * 500 - caught * 200; return { q: `Mr. Barriga charged you rent ($200) ${caught} time${caught > 1 ? 's' : ''} and you escaped him ${esc} time${esc > 1 ? 's' : ''} (+$500 each). What is your net result?`, answer: a, options: [a, esc * 500, esc * 500 + caught * 200, a - 200], explain: `${esc} × $500 − ${caught} × $200 = ${money(a)}.` }; },
+  () => { const cost = pick([350000, 910000]), gain = pick([50000, 70000, 91000]); const a = Math.ceil(cost / gain); return { q: `An upgrade costs ${money(cost)} and adds ${money(gain)} of income per tick. After how many ticks does it pay for itself?`, answer: a, options: [a, a + 2, Math.max(1, a - 2), a * 2], explain: `Payback = ${money(cost)} ÷ ${money(gain)} ≈ ${(cost / gain).toFixed(1)} → ${a} ticks.`, fmt: n => `${n} tick${n === 1 ? '' : 's'}` }; },
+  () => { const price = pick([180, 230, 350]), pct = pick([5, 8, 10]); const a = price * (1 - pct / 100); return { q: `A stock costs ${money(price)} and drops ${pct}%. What is the new price?`, answer: a, options: [a, price * (1 + pct / 100), price - pct, price], explain: `${money(price)} × (1 − ${pct}/100) = ${money(a)}. Stocks can lose value too!` }; },
+  () => { const qty = ri(2, 8), buy = pick([180, 230]), sell = buy + pick([20, 40, 50]); const a = qty * (sell - buy); return { q: `You bought ${qty} shares at ${money(buy)} and sold them at ${money(sell)}. What is your profit?`, answer: a, options: [a, qty * sell, sell - buy, a * 2], explain: `Profit = ${qty} × (${money(sell)} − ${money(buy)}) = ${money(a)}.` }; },
+  () => { const P = ri(2, 8) * 100, years = 2; const a = P * 1.1 ** years; return { q: `${money(P)} grows 10% per year. How much is it worth after ${years} years?`, answer: a, options: [a, P * 1.2, P * 1.1, P * 1.3], explain: `${money(P)} × 1.10² = ${money(a)}. Compound growth beats simple growth.` }; },
+];
+/** Five random questions; resolves with { passed, correct, total, needed, quit }. */
+export function playQuiz(root, total = 5, needed = 3) {
+  return new Promise(resolve => {
+    root.innerHTML = '';
+    const el = document.createElement('div'); el.className = 'overlay';
+    el.innerHTML = `
+      <div class="card game">
+        <div class="game-head">
+          <div><span class="tag">📚 Helper mission</span><h2 style="margin-top:6px">Financial-math homework</h2></div>
+          <button class="btn icon ghost" data-quit aria-label="Quit">${icon('close')}</button>
+        </div>
+        <p class="muted" data-hint>The school kids are stuck. Answer at least ${needed} of ${total} questions to help them (and earn $5,000).</p>
+        <div class="progress"><i data-bar style="width:0%"></i></div>
+        <div data-body class="stack"></div>
+      </div>`;
+    root.appendChild(el);
+    el.querySelector('[data-quit]').onclick = () => resolve({ passed: false, correct, total, needed, quit: true });
+    const body = el.querySelector('[data-body]'), bar = el.querySelector('[data-bar]');
+    const picked = shuffle(QUESTIONS).slice(0, total).map(g => g());
+    let i = 0, correct = 0;
+    const ask = () => {
+      if (i >= total) {
+        const passed = correct >= needed;
+        body.innerHTML = `<div class="big-emoji" style="text-align:center">${passed ? '🎓🦙' : '📖🦙'}</div><h3 style="text-align:center">${passed ? 'Homework done!' : 'Not quite yet…'}</h3><p style="text-align:center">You got <b>${correct}/${total}</b> right.${passed ? ' The kids are ready for their test!' : ` They need at least ${needed} correct answers.`}</p><button class="btn ${passed ? 'sage' : 'peach'}" data-finish>${icon(passed ? 'check' : 'reset')} ${passed ? 'Collect $5,000' : 'Back to town'}</button>`;
+        body.querySelector('[data-finish]').onclick = () => resolve({ passed, correct, total, needed, quit: false });
+        return;
+      }
+      const it = picked[i]; const opts = shuffle([...new Set(it.options.map(v => Math.round(v * 100) / 100))]);
+      body.innerHTML = `<div class="ticket" style="font-size:18px">Question ${i + 1} of ${total}: ${it.q}</div><div class="doors" data-opts>${opts.map(v => `<button class="door" data-v="${v}">${(it.fmt || money)(v)}</button>`).join('')}</div><div class="formula hidden" data-explain></div>`;
+      body.querySelectorAll('[data-v]').forEach(b => (b.onclick = () => {
+        const right = Math.abs(Number(b.dataset.v) - it.answer) < 0.01;
+        body.querySelectorAll('[data-v]').forEach(x => { x.disabled = true; if (Math.abs(Number(x.dataset.v) - it.answer) < 0.01) x.classList.add('right'); });
+        if (right) correct++; else b.classList.add('wrong');
+        const ex = body.querySelector('[data-explain]'); ex.classList.remove('hidden'); ex.innerHTML = `${right ? '✅ Correct!' : '❌ Not this time.'} 📐 ${it.explain}`;
+        i++; bar.style.width = `${Math.round((i / total) * 100)}%`;
+        const next = document.createElement('button'); next.className = 'btn small'; next.innerHTML = `${icon('arrow')} ${i >= total ? 'See result' : 'Next question'}`; next.onclick = ask; body.appendChild(next);
+      }));
+    };
+    ask();
+  });
+}

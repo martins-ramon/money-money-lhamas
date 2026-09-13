@@ -241,7 +241,7 @@ function mansion() {
   g.add(mesh(new THREE.BoxGeometry(1.8, 2.6, 0.3), mat(PALETTE.ink), 0, 1.3, 3.1));
   for (const x of [-4, -2, 2, 4]) for (const y of [1.5, 3.7]) g.add(mesh(new THREE.BoxGeometry(1.1, 1.1, 0.2), mat(PALETTE.sky), x, y, 3.05));
   for (const x of [-1.7, 1.7]) g.add(mesh(new THREE.CylinderGeometry(0.3, 0.3, 5, 10), mat(PALETTE.white), x, 2.5, 3.2));
-  const fountain = new THREE.Group(); fountain.position.set(0, 0, 8);
+  const fountain = new THREE.Group(); fountain.position.set(6, 0, 8);
   fountain.add(mesh(new THREE.CylinderGeometry(2, 2.2, 0.6, 16), mat(0x9fb3c8), 0, 0.3, 0)); fountain.add(mesh(new THREE.CylinderGeometry(1.7, 1.7, 0.2, 16), mat(0x5cc8ff), 0, 0.62, 0)); fountain.add(mesh(new THREE.CylinderGeometry(0.25, 0.4, 1.6, 10), mat(0x9fb3c8), 0, 1.2, 0));
   g.add(fountain);
   return g;
@@ -327,6 +327,7 @@ export class World {
     this.interactables.push({ id: 'home', type: 'home', label: 'Customize your place', position: new THREE.Vector3(PLACES.home.position[0], 0, PLACES.home.position[1] + 6), radius: 3.2 });
     // HQ
     this.hqGroup = hq(); this.hqGroup.position.set(PLACES.hq.position[0], 0, PLACES.hq.position[1]); this.hqGroup.visible = false; const hs = sign('LLAMA LABS', '#5cc8ff'); hs.position.set(0, 11, 3.2); this.hqGroup.add(hs); this.city.add(this.hqGroup);
+    this.hqObstacle = { x: PLACES.hq.position[0], z: PLACES.hq.position[1], r: 0 }; this.obstacles.push(this.hqObstacle);
     this.interactables.push({ id: 'hq', type: 'hq', label: 'Run Llama Labs', position: new THREE.Vector3(PLACES.hq.position[0], 0, PLACES.hq.position[1] + 4.5), radius: 3.5 });
     // Quests + BBQ
     this.questMarkers = {};
@@ -353,6 +354,14 @@ export class World {
     this.playerMesh = buildLlama(0xfff1d6, 'Street dreamer'); this.scene.add(this.playerMesh);
     this.girlfriend = buildLlama(0xffe1ea, 'Girlfriend'); this.girlfriend.visible = false; this.scene.add(this.girlfriend);
     this.barriga = buildBarriga(); this.barriga.visible = false; this.scene.add(this.barriga);
+    // Townsfolk: wandering llamas you can bonk into the air
+    this.npcs = []; this.onBonk = () => {};
+    const looks = [[0xfff1d6, 'Street dreamer'], [0xe8caa4, 'Fresh streetwear'], [0xd9b99b, 'Street dreamer'], [0xffe1ea, 'Girlfriend'], [0xc9b7a2, 'Fresh streetwear'], [0xf3dcc0, 'Street dreamer']];
+    looks.forEach(([color, costume], i) => {
+      const m = buildLlama(color, costume); m.scale.setScalar(0.85); this.city.add(m);
+      const npc = { mesh: m, pos: new THREE.Vector3(Math.cos(i * 1.05) * 14, 0, Math.sin(i * 1.05) * 14), target: new THREE.Vector3(), vy: 0, spin: 0, state: 'walk', timer: rnd(i, 12) * 4, speed: 0 };
+      this.#roam(npc); this.npcs.push(npc);
+    });
     // Moon
     const moonGround = mesh(new THREE.CircleGeometry(60, 40), mat(0xb9bcc9)); moonGround.rotation.x = -Math.PI / 2; this.moon.add(moonGround);
     for (let i = 0; i < 14; i++) { const cr = mesh(new THREE.TorusGeometry(1 + rnd(i, 8) * 2, 0.25, 6, 20), mat(0x9a9db0), rnd(i, 9) * 80 - 40, 0.1, rnd(i, 10) * 80 - 40, false); cr.rotation.x = Math.PI / 2; this.moon.add(cr); }
@@ -381,7 +390,7 @@ export class World {
   }
   setCostume(name) {
     const { pos } = this.player; const heading = this.playerMesh.rotation.y;
-    this.scene.remove(this.playerMesh); this.playerMesh = buildLlama(0xfff1d6, name); this.playerMesh.position.copy(pos); this.playerMesh.rotation.y = heading; this.scene.add(this.playerMesh);
+    this.scene.remove(this.playerMesh); this.playerMesh = buildLlama(this.bodyColor ?? 0xfff1d6, name); this.playerMesh.position.copy(pos); this.playerMesh.rotation.y = heading; this.scene.add(this.playerMesh);
   }
   setAsset(asset, color, style) {
     this.assetGroup.clear();
@@ -395,21 +404,21 @@ export class World {
     for (const it of this.interactables) if (it.type === 'job' && it.group.userData.closed) it.group.userData.closed.visible = JOBS.find(j => j.id === it.id).pay === 900 && !advanced;
     const rich = ['robbery', 'business', 'moon', 'freeplay'].includes(stage);
     if (rich && !this.mansionGroup) {
-      this.mansionGroup = new THREE.Group(); this.mansionGroup.position.set(0, 0, 32); this.mansionGroup.add(mansion());
+      this.mansionGroup = new THREE.Group(); this.mansionGroup.position.set(0, 0, 32); this.mansionGroup.rotation.y = Math.PI; this.mansionGroup.add(mansion());
       for (const [x, z, c, s] of [[-7, 9, 0xff6b6b, 'sporty'], [7, 9, 0xf6b53d, 'sporty'], [-7, 13, 0x2b2a33, 'classic']]) { const v = car(c, s, 1.1); v.position.set(x, 0, z); v.rotation.y = Math.PI / 2; this.mansionGroup.add(v); }
-      this.city.add(this.mansionGroup); this.obstacles.push({ x: 0, z: 32, r: 7 });
-      this.interactables.push({ id: 'mansion', type: 'mansion', label: 'Enter your mansion', position: new THREE.Vector3(0, 0, 36.5), radius: 3.5 });
+      this.city.add(this.mansionGroup); this.obstacles.push({ x: 0, z: 32, r: 6.5 }, { x: -6, z: 24, r: 2.4 });
+      this.interactables.push({ id: 'mansion', type: 'mansion', label: 'Enter your mansion', position: new THREE.Vector3(0, 0, 27), radius: 3.5 });
       this.plot.visible = false;
     }
     if (this.mansionGroup) { this.mansionGroup.visible = rich; this.plot.visible = !rich && !!state?.asset || stage === 'purchase' || stage === 'beginning'; }
-    this.girlfriend.visible = rich; this.girlfriend.position.set(4, 0, 40); this.girlfriend.rotation.y = Math.PI / 2;
-    this.hqGroup.visible = ['business', 'moon', 'freeplay'].includes(stage);
+    this.girlfriend.visible = rich; this.girlfriend.position.set(4, 0, 25); this.girlfriend.rotation.y = Math.PI / 2;
+    this.hqGroup.visible = ['business', 'moon', 'freeplay'].includes(stage); this.hqObstacle.r = this.hqGroup.visible ? 4.4 : 0;
     const onMoon = stage === 'moon';
     this.moon.visible = onMoon; this.city.visible = !onMoon;
     this.scene.background.set(onMoon ? 0x0b0d1a : PALETTE.sky); this.scene.fog.color.set(onMoon ? 0x0b0d1a : PALETTE.sky); this.scene.fog.near = onMoon ? 90 : 60;
     this.hemi.intensity = onMoon ? 0.5 : 1.1; this.hemi.groundColor.set(onMoon ? 0x444a66 : 0x9dd39a);
     if (onMoon) { this.player.pos.set(0, 0, 6); this.girlfriend.visible = true; this.girlfriend.position.set(3, 0, 2); this.girlfriend.rotation.y = Math.PI; }
-    if (stage === 'robbery' && this.player.pos.z < 24) this.player.pos.set(0, 0, 24);
+    if (stage === 'robbery' && this.player.pos.z < 18) this.player.pos.set(0, 0, 18);
     for (const id of ['picnic', 'explorer', 'helper']) this.questMarkers[id].visible = stage === 'freeplay' && !state?.sideQuests?.includes(id);
     this.bbq.visible = stage === 'freeplay';
   }
@@ -419,6 +428,7 @@ export class World {
     let best = null, bestD = Infinity;
     for (const it of this.interactables) {
       if (it.type === 'moon' ? this.stage !== 'moon' : this.stage === 'moon') continue;
+      if (it.type === 'home' && !this.plot.visible) continue;
       const d = it.position.distanceTo(this.player.pos);
       if (d < it.radius && d < bestD && this.available(it)) { best = it; bestD = d; }
     }
@@ -440,6 +450,38 @@ export class World {
     if (dist > 0.3) { dir.normalize(); b.position.addScaledVector(dir, Math.min(dist, dt * 4.2)); b.rotation.y = Math.atan2(dir.x, dir.z) - Math.PI / 2; }
     b.position.y = Math.abs(Math.sin(this.time * 12)) * 0.15;
     if (!hidden && b.position.distanceTo(this.player.pos) < 2.6) { this.onFound(); }
+  }
+  #roam(npc) {
+    const a = Math.random() * Math.PI * 2, r = 6 + Math.random() * 30;
+    npc.target.set(Math.cos(a) * r, 0, Math.sin(a) * r); npc.timer = 4 + Math.random() * 6;
+  }
+  #updateNpcs(dt) {
+    if (this.stage === 'moon') return;
+    const p = this.player;
+    for (const npc of this.npcs) {
+      const { mesh: m } = npc;
+      if (npc.state === 'fly') {
+        npc.vy -= 22 * dt; npc.pos.y += npc.vy * dt; npc.spin += dt * 9; npc.pos.addScaledVector(npc.dir, dt * 6);
+        m.rotation.x = npc.spin; m.rotation.z = npc.spin * 0.6;
+        if (npc.pos.y <= 0) { npc.pos.y = 0; npc.state = 'dazed'; npc.timer = 1.6; m.rotation.x = m.rotation.z = 0; }
+      } else if (npc.state === 'dazed') {
+        npc.timer -= dt; m.rotation.z = Math.sin(this.time * 20) * 0.15; npc.speed = 0;
+        if (npc.timer <= 0) { npc.state = 'walk'; m.rotation.z = 0; this.#roam(npc); }
+      } else {
+        npc.timer -= dt; const dir = npc.target.clone().sub(npc.pos); dir.y = 0; const d = dir.length();
+        if (d < 0.8 || npc.timer <= 0) this.#roam(npc);
+        else { dir.normalize(); npc.pos.addScaledVector(dir, dt * 2.4); npc.speed = 2.4; const t = Math.atan2(dir.x, dir.z) - Math.PI / 2; let diff = t - m.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); m.rotation.y += diff * Math.min(1, dt * 6); }
+        for (const o of this.obstacles) { const dx = npc.pos.x - o.x, dz = npc.pos.z - o.z, dd = Math.hypot(dx, dz); if (dd < o.r + 0.6 && dd > 0.001) { const push = (o.r + 0.6 - dd) / dd; npc.pos.x += dx * push; npc.pos.z += dz * push; } }
+        // bonk: run or land on a townsfolk llama and it goes flying
+        const dx = npc.pos.x - p.pos.x, dz = npc.pos.z - p.pos.z, dist = Math.hypot(dx, dz);
+        if (dist < 1.7 && (p.speed > 5.5 || (!p.grounded && p.vy < -2))) {
+          npc.state = 'fly'; npc.vy = 8 + Math.random() * 3; npc.spin = 0; npc.dir = new THREE.Vector3(dx, 0, dz).normalize(); this.onBonk(npc);
+        } else if (dist < 1.4) { npc.pos.x += (dx / dist) * (1.4 - dist); npc.pos.z += (dz / dist) * (1.4 - dist); }
+      }
+      const swing = Math.sin(this.time * 12 + npc.pos.x) * 0.5 * (npc.speed / 2.4);
+      m.userData.legs.forEach((l, i) => (l.rotation.z = swing * (i % 2 ? -1 : 1) * (i < 2 ? 1 : -1)));
+      m.position.copy(npc.pos);
+    }
   }
   update() {
     const dt = Math.min(this.clock.getDelta(), 0.05); this.time += dt;
@@ -477,6 +519,7 @@ export class World {
     for (const c of this.clouds) { c.position.x += dt * 0.6; if (c.position.x > 70) c.position.x = -70; }
     for (const q of Object.values(this.questMarkers)) if (q.visible) { q.userData.star.rotation.y += dt * 2; q.userData.star.position.y = 4 + Math.sin(this.time * 2) * 0.3; }
     this.#updateBarriga(dt);
+    if (!this.frozen) this.#updateNpcs(dt);
     // camera
     const desired = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch)).multiplyScalar(this.distance).add(p.pos).add(new THREE.Vector3(0, 1.6, 0));
     desired.y = Math.max(desired.y, 0.8);
