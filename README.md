@@ -7,24 +7,51 @@ O jogo é em **inglês**, com visual cartoon (estilo Looney Tunes) e uma pitada 
 ## Como rodar
 
 ```bash
-npm install
-npm run dev      # servidor de desenvolvimento em http://localhost:5173
+npm ci
+npm run dev      # servidor de desenvolvimento em http://localhost:5174
 npm run build    # gera a versão final em dist/
-npm run preview  # serve a versão final
+npm run preview  # confere a versão final em http://localhost:4173
 npm test         # testes da lógica financeira (node --test)
 ```
 
-Requer Node.js 20 ou mais novo. Não precisa de backend: o progresso é salvo no `localStorage` do navegador.
+Requer Node.js 22.12 ou mais novo (com nvm, execute `nvm use`). `npm start` também inicia o desenvolvimento. Abra http://localhost:5174 no navegador; mantenha o terminal rodando e use Ctrl+C para encerrar. Se a porta estiver ocupada, encerre o outro servidor antes de iniciar.
+
+Não precisa de backend: o progresso é salvo no `localStorage` do navegador. Cada navegador e endereço mantém seu próprio progresso; o save de localhost não é transferido automaticamente para o Replit.
+
+## Rodar e hospedar no Replit
+
+1. Importe este repositório no Replit, incluindo o arquivo oculto `.replit`.
+2. Clique em **Run**. A configuração instala as dependências e inicia o jogo; abra o **Preview** para jogar. O servidor escuta em `0.0.0.0:5174`, mapeado para a porta externa 80, e permite o domínio informado pelo Replit em `REPLIT_DEV_DOMAIN`.
+3. Quando o jogo estiver pronto, use **Publish** com o tipo **Static**. O arquivo `.replit` configura o build `npm ci --include=dev && npm run build` e a pasta pública `dist`.
+
+A publicação serve os arquivos finais, sem precisar manter um servidor Node.js. `npm run preview` serve apenas para conferir o build localmente. Configuração baseada na [documentação do Replit](https://docs.replit.com/features/project-setup/configuration) e na [configuração de publicação estática](https://docs.replit.com/features/deployment-customization/static-deployments-advanced).
 
 ## Controles
 
 | Ação | Computador | Celular |
 | --- | --- | --- |
 | Andar | WASD ou setas | Joystick (esquerda) |
+| Correr | Segurar Shift | Botão **Run** (ativa/desativa) |
 | Olhar | Arrastar o mouse | Deslizar no lado direito da tela |
 | Pular | Espaço | Botão **Jump** |
 | Interagir | E ou Enter | Botão **Action** |
 | Fechar painel | Esc | Botão × |
+| Guia da cidade | M ou botão de mapa | Botão de mapa |
+| Pausar | Esc durante a exploração | Menu |
+
+## Experiência do jogador
+
+- Tela inicial com continuação da partida, personagens 3D e controle de som.
+- Missão atual com progresso, bússola, distância e um feixe dourado no destino. O mapa permite escolher outro local; durante a cobrança, o guia aponta para o arbusto mais próximo. A indicação é em linha reta: contorne os prédios pelas ruas.
+- Movimento relativo à câmera, aceleração suave, corrida, tolerância de 150 ms para o comando de salto e gravidade menor na Lua.
+- Partículas de coleta, salto e impacto; celebrações de empregos, roupas, compras, melhorias e missões. O conjunto de partículas 3D é limitado a 96 instâncias.
+- Menus pausam a exploração e a cobrança. Ao sair da aba durante a exploração, o jogo abre o menu. A empresa continua rendendo no painel de negócios, preservando a quantidade de ações digitada; fica pausada nos demais painéis.
+- Minigames com progresso visível, atalhos numéricos para as opções e setas na patrulha policial. Desistir encerra as esperas da atividade e não paga salário.
+- Defesa da mansão com quatro fases, recorde de sequência, botão de pausa e ataque com Espaço ao ladrão mais próximo. A pausa também funciona com Esc; após trocar de aba, é preciso retomar manualmente.
+- Menu com qualidade **High/Balanced**, movimento reduzido e opção de esconder o minimapa. Preferências são salvas separadamente da partida; o jogo continua funcionando se o armazenamento estiver bloqueado.
+- Navegação dos painéis pelo teclado, foco visível e mensagens acessíveis. O churrasco final é liberado após as três missões secundárias.
+
+`npm test` executa testes das regras, direções em diferentes ângulos da câmera, joystick, missões, preferências e minigames em DOM simulado. Esses testes não substituem a validação visual em navegadores e celulares reais.
 
 ## A jornada
 
@@ -59,8 +86,12 @@ src/model.js        estado do jogo e regras financeiras (puro, testável)
 src/world.js        cena 3D (three.js): cidade, Lua, lhamas, Seu Barriga, NPCs
 src/minigames.js    minigames dos empregos, defesa da mansão e quiz
 src/icons.js        ícones SVG
+src/experience.js   controles, missões, preferências e ciclo das atividades
+src/feedback.js     minimapa e celebrações
 src/style.css       interface cartoon
 tests/model.test.js testes das regras (node:test)
+tests/experience.test.js controles, progressão e cancelamento
+tests/minigames.test.js interações e pausa em DOM simulado
 ```
 
 Abra o jogo com `?debug` na URL para expor `window.__mml` (estado, mundo e teletransporte) e facilitar testes.

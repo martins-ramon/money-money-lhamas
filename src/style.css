@@ -190,3 +190,137 @@ body:not(.touch-device) .touch { display: none; }
   .touch-buttons .btn.action { width: 72px; height: 72px; min-height: 72px; }
   .panel { max-height: calc(100vh - 16px); }
 }
+
+/* Adventure HUD: clear goals, a readable town guide, and room for the world. */
+.hud > .hud-spacer { pointer-events: none; }
+.objective { display: none !important; }
+.journey-status { display: grid; gap: 7px; }
+.journey-status > small { font-size: 10px; font-weight: 700; padding-left: 5px; text-shadow: 0 1px 2px #fffaf0; }
+.mission-card { position: absolute; top: calc(100px + var(--safe-top)); left: calc(18px + var(--safe-left)); width: min(340px, calc(100vw - 36px)); padding: 17px; border: 2px solid #fffaf039; border-radius: 20px; background: #252738ed; color: #fffaf0; box-shadow: 0 10px 30px #20203126; }
+.mission-eyebrow { display: grid; gap: 6px; color: var(--sun); font-size: 10px; font-weight: 800; letter-spacing: 1.5px; }
+.mission-eyebrow span { color: #dcdae4; font-size: 11px; letter-spacing: 0; font-weight: 500; }
+.mission-card h2 { font-size: 23px; line-height: 1.1; margin: 12px 0 6px; }
+.mission-card p { font-size: 12px; color: #dcdae4; }
+.mission-card .progress { height: 7px; border: 0; margin: 14px 0 12px; background: #ffffff20; }
+.mission-card .progress i { background: linear-gradient(90deg, #ffb37a, #ffd94d); border-radius: inherit; }
+.destination { display: flex; width: 100%; gap: 8px; align-items: center; text-align: left; font-size: 11px; color: #fffaf0; border-top: 1px solid #ffffff25; padding: 12px 0 0; }
+.destination > span:nth-child(2) { flex: 1; }
+.destination b { color: var(--sun); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.route-arrow { display: grid; place-items: center; width: 27px; height: 27px; flex: none; border-radius: 50%; background: var(--sun); color: var(--ink); font-size: 22px; font-weight: 900; }
+.minimap { position: absolute; left: calc(18px + var(--safe-left)); bottom: calc(92px + var(--safe-bottom)); width: 180px; padding: 10px; border: 2px solid var(--ink); border-radius: 20px; background: var(--paper); box-shadow: 0 6px 0 #2b2a3320; text-align: left; }
+.minimap > span { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 9px; font-weight: 800; letter-spacing: .7px; }
+.minimap b { color: #6b568d; }
+.minimap canvas { display: block; width: 100%; aspect-ratio: 1; border-radius: 12px; }
+.minimap small { display: block; text-align: center; margin-top: 6px; font-size: 9px; }
+.control-hint { position: absolute; bottom: calc(22px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 7px; padding: 9px 13px; border-radius: 12px; background: #fffaf0dd; font-size: 11px; white-space: nowrap; pointer-events: none; }
+.control-hint kbd { font: 700 10px var(--font-body); background: #fff; border: 1px solid #2b2a3330; border-bottom-width: 3px; border-radius: 5px; padding: 4px; }
+.toast-area { top: calc(108px + var(--safe-top)); width: min(390px, 88vw); z-index: 30; }
+.toast-error { background: #ffe6de; border-color: #b6433b; }
+.rent-banner { top: calc(18px + var(--safe-top)); max-width: calc(100vw - 40px); z-index: 3; }
+.prompt { max-width: calc(100vw - 30px); white-space: normal; text-align: left; bottom: calc(105px + var(--safe-bottom)); }
+body.panel-open .mission-card, body.panel-open .minimap, body.panel-open .control-hint, body.panel-open .rent-banner { visibility: hidden; }
+.destination-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.destination-grid .tag { font-size: 9px; justify-self: start; }
+.settings-grid { display: grid; gap: 14px; border-top: 2px solid #2b2a3317; padding-top: 16px; }
+.settings-grid label { font-weight: 700; font-size: 14px; }
+.settings-grid select { display: block; width: 100%; margin-top: 8px; padding: 12px; border-radius: 12px; border: 2px solid var(--ink); background: var(--cream); font: inherit; }
+.setting-toggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.setting-toggle small { display: block; font-weight: 400; margin-top: 4px; }
+.setting-toggle input { width: 24px; height: 24px; accent-color: #67508d; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #8451b9; outline-offset: 4px; }
+canvas.world:focus { outline: none; }
+.overlay, .panel, .game { touch-action: pan-y; overscroll-behavior: contain; }
+.overlay { align-items: safe center; }
+.game { max-height: calc(100dvh - 30px); overflow-y: auto; }
+.arrow-grid { grid-template-columns: repeat(3, 64px); }
+.arrow-grid .btn { width: 64px; height: 64px; min-height: 64px; }
+.arrow-grid .btn.flash { background: var(--sun); box-shadow: 0 0 20px #ffd94d; }
+.minigame-counter { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; }
+.minigame-counter b { color: #317845; }
+.thief { border: 0; background: transparent; padding: 0; }
+.thief:focus-visible { outline-offset: -8px; border-radius: 15px; }
+.defense-paused .thief { visibility: hidden; }
+.pause-note { position: absolute; inset: 0; display: grid; place-items: center; color: white; background: #151a30bb; font: 800 28px var(--font-display); z-index: 2; }
+
+/* A playful, cinematic welcome using the game's own live characters. */
+.overlay.scene { background: radial-gradient(ellipse at 85% 5%, #e6a14855, transparent 45%), linear-gradient(150deg, #172a42ed, #342b51eb 62%, #57404de8); color: #fffaf0; }
+.overlay.scene .panel { width: min(100%, 800px); }
+.overlay.scene .card { color: var(--ink); }
+.overlay.scene .btn { color: var(--ink); }
+.title { position: relative; width: 100%; gap: 15px; padding: 24px 16px; }
+.title-kicker { color: #e9d3a5; font-size: 10px; font-weight: 800; letter-spacing: 2.3px; }
+.title .logo { width: 46px; color: var(--sun); }
+.game-wordmark { letter-spacing: 3px; font-size: 12px; font-weight: 800; }
+.title h1 { font-size: clamp(38px, 6vw, 64px); line-height: .99; letter-spacing: -2px; text-wrap: balance; }
+.title h1 span { color: var(--sun); }
+.title p.lead { max-width: 520px; font-size: 15px; color: #e0dbea; }
+.dream-route { display: flex; align-items: center; justify-content: center; gap: 15px; padding: 10px 0; color: #e4deee; font-size: 9px; font-weight: 800; letter-spacing: 1px; }
+.dream-route i { color: var(--sun); font-style: normal; }
+.character-invite { font-size: 10px; letter-spacing: 2px; color: #e8d19e; }
+.title .choice-grid { max-width: 480px; }
+.title .character-card { position: relative; color: var(--ink); background: #fffaf0; border: 2px solid #fffaf0; box-shadow: 0 7px 0 #070b192f; transition: transform .2s, border-color .2s; gap: 6px; padding: 12px; }
+.title .character-card:hover { transform: translateY(-5px); border-color: var(--sun); }
+.title .character-card canvas { width: 120px; height: 120px; background: radial-gradient(ellipse, #c8b4f25c, transparent 70%); }
+.title .character-card small { font-size: 12px; }
+.title .continue-btn { display: flex; flex-wrap: wrap; border-color: #ffe58b; box-shadow: 0 4px 0 #ba8029; max-width: 460px; width: 100%; }
+.continue-btn small { width: 100%; font: 500 12px var(--font-body); }
+.onboarding-steps { display: grid; gap: 8px; background: var(--cream); border-radius: 14px; padding: 14px; font-size: 14px; }
+.onboarding-steps b { display: inline-grid; place-items: center; margin-right: 10px; width: 28px; height: 28px; border-radius: 50%; background: var(--sun); font-family: var(--font-display); }
+
+/* Reward effects never intercept an input or obscure an action button. */
+.celebration-layer { position: absolute; inset: 0; pointer-events: none; z-index: 25; overflow: hidden; }
+.achievement { position: absolute; top: calc(18px + var(--safe-top)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 13px; width: min(460px, calc(100vw - 30px)); padding: 14px 18px; background: #252738; color: #fffaf0; border: 2px solid #ffd94d; border-radius: 18px; box-shadow: 0 12px 35px #0004; animation: achievement 4.5s both; }
+.achievement-medal { display: grid; place-items: center; flex: none; width: 46px; height: 46px; border-radius: 50%; background: #ffd94d; color: #725114; font-size: 28px; box-shadow: 0 0 25px #ffd94d40; }
+.achievement small, .achievement strong, .achievement div > span { display: block; }
+.achievement small { font-size: 8px; color: #ffe39b; letter-spacing: 1.5px; margin-bottom: 6px; }
+.achievement strong { font: 800 21px var(--font-display); }
+.achievement div > span { font-size: 12px; color: #dedbe8; margin-top: 4px; }
+.confetti { position: absolute; left: var(--x); top: -20px; width: 9px; height: 15px; border-radius: 2px; animation: confetti 3s var(--delay) ease-in both; }
+@keyframes confetti { to { transform: translate(var(--drift), 105vh) rotate(var(--spin)); opacity: 0; } }
+@keyframes achievement { 0% { opacity: 0; transform: translate(-50%, -20px) scale(.95); } 12%, 85% { opacity: 1; transform: translate(-50%, 0) scale(1); } 100% { opacity: 0; transform: translate(-50%, -10px); } }
+body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+body.reduced-motion .confetti { display: none; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+@media (max-width: 1100px) { .control-hint { bottom: 90px; } .mission-card { width: 280px; } }
+@media (max-width: 760px) {
+  .mission-card { top: calc(96px + var(--safe-top)); left: 10px; width: min(300px, calc(100vw - 84px)); padding: 12px; }
+  .mission-card h2 { font-size: 18px; margin-top: 9px; }
+  .mission-card p { display: none; }
+  .mission-eyebrow { font-size: 8px; }
+  .mission-eyebrow span { font-size: 10px; }
+  .minimap { left: auto; right: 10px; bottom: calc(165px + var(--safe-bottom)); width: 120px; padding: 7px; border-radius: 14px; }
+  .minimap > span { font-size: 7px; letter-spacing: 0; } .minimap small { display: none; }
+  .control-hint { display: none !important; }
+  .hud-actions .btn.icon { width: 44px; height: 44px; min-height: 44px; }
+  .hud-bottom .tag { max-width: 160px; font-size: 10px; }
+  .journey-status > small { max-width: 150px; font-size: 8px; }
+  .destination-grid { grid-template-columns: 1fr; }
+  .dream-route { gap: 8px; font-size: 7px; letter-spacing: .2px; }
+  .title { padding: 12px 2px; gap: 12px; }
+  .title .choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .title .character-card canvas { width: 100px; height: 100px; }
+  .title .logo { display: none; }
+  .title .character-card { padding: 8px; }
+  .title .character-card small { font-size: 11px; }
+  .table { min-width: 540px; } .card:has(.table) { overflow-x: auto; }
+  body.touch-device .rent-banner { top: calc(255px + var(--safe-top)); font-size: 12px; padding: 6px 10px; gap: 6px; }
+  body.touch-device .toast-area { top: calc(275px + var(--safe-top)); }
+  .touch-buttons { right: 12px; gap: 7px; }
+  .touch-buttons .btn { width: 56px; height: 56px; min-height: 56px; font-size: 11px; }
+  .touch-buttons .btn.action { width: 66px; height: 66px; min-height: 66px; }
+  .joystick { left: 16px; width: 108px; height: 108px; }
+}
+@media (max-height: 650px) {
+  .minimap { width: 110px; bottom: 90px; }
+  .minimap small { display: none; }
+  .mission-card p { display: none; }
+}
+@media (max-height: 480px) and (orientation: landscape) {
+  .mission-card { top: 75px; width: 250px; padding: 10px; }
+  .mission-card h2 { font-size: 16px; } .mission-eyebrow span { display: none; }
+  .minimap { display: none !important; }
+  body.touch-device .hud-actions { top: 10px; right: 170px; flex-direction: row; }
+  body.touch-device .hud-bottom { padding-bottom: 80px; }
+  body.touch-device .rent-banner { top: 85px; left: 70%; }
+  .prompt { bottom: 85px; }
+}

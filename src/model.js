@@ -139,6 +139,7 @@ export function act(state, action) {
       s.sideQuests.push(action.id); credit(s, 'Free-world mission completed', 5000); break;
     case 'celebrate':
       if (s.stage !== 'freeplay') throw new Error('Your Moon adventure is still ahead!');
+      if (new Set(s.sideQuests).size < 3) throw new Error('Complete the three side missions before the BBQ party.');
       s.celebration = true; break;
     case 'mute': s.muted = !s.muted; break;
     default: throw new Error('Unknown game action.');

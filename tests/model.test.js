@@ -151,6 +151,9 @@ test('one billion dollars unlocks the Moon and the Lunar billionaire suit', () =
   assert.ok(s.sideQuests.includes('helper'));
   assert.throws(() => act(s, { type: 'quest', id: 'helper' }), /not available/);
   assert.throws(() => act(started(), { type: 'celebrate' }), /still ahead/);
+  assert.throws(() => act(s, { type: 'celebrate' }), /three side missions/);
+  s = act(s, { type: 'quest', id: 'picnic' });
+  s = act(s, { type: 'quest', id: 'explorer' });
   assert.equal(act(s, { type: 'celebrate' }).celebration, true);
 });
 

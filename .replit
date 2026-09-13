@@ -1,0 +1,12 @@
+entrypoint = "index.html"
+modules = ["nodejs-22"]
+run = "npm ci --include=dev && npm run dev"
+
+[[ports]]
+localPort = 5174
+externalPort = 80
+
+[deployment]
+deploymentTarget = "static"
+build = ["sh", "-c", "npm ci --include=dev && npm run build"]
+publicDir = "dist"

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { movementInput } from './experience.js';
 import { JOBS } from './model.js';
 
 const PALETTE = { peach: 0xffb37a, sage: 0x9dd39a, lilac: 0xc8b4f2, sky: 0x8fd4ff, sun: 0xffd94d, coral: 0xff6b6b, ink: 0x2b2a33, cream: 0xf7f2e4, wood: 0xb58a5a, gold: 0xf6b53d, white: 0xfffaf0 };
@@ -40,6 +41,11 @@ function textTexture(text, bg = '#fffaf0', fg = '#2b2a33', size = 64) {
 function sign(text, bg) {
   const s = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshBasicMaterial({ map: textTexture(text, bg), transparent: true }));
   return s;
+}
+function disposeGroup(group) {
+  const geometries = new Set(), materials = new Set();
+  group.traverse(object => { if (object.geometry) geometries.add(object.geometry); if (object.material) (Array.isArray(object.material) ? object.material : [object.material]).forEach(m => materials.add(m)); });
+  geometries.forEach(g => g.dispose()); materials.forEach(m => { m.map?.dispose(); m.dispose(); });
 }
 
 /* ---------- Characters ---------- */
@@ -269,16 +275,20 @@ export class World {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, touch ? 1.5 : 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = !touch;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 260);
-    this.yaw = Math.PI; this.pitch = 0.42; this.distance = 9.5;
+    this.yaw = 0; this.pitch = 0.42; this.distance = 9.5;
     this.keys = new Set(); this.joy = { x: 0, y: 0 }; this.jumpQueued = false;
-    this.player = { pos: new THREE.Vector3(0, 0, 10), vy: 0, heading: 0, speed: 0, grounded: true };
+    this.velocity = new THREE.Vector3(); this.sprint = false; this.jumpBuffer = 0;
+    this.reducedMotion = false; this.onJump = () => {}; this.onLand = () => {};
+    this.player = { pos: new THREE.Vector3(0, 0, 10), vy: 0, heading: Math.PI, speed: 0, grounded: true };
     this.obstacles = []; this.interactables = []; this.coins = new Map(); this.onCoin = () => {}; this.frozen = false;
     this.barriga = null; this.rentActive = false; this.onFound = () => {};
     this.clock = new THREE.Clock(); this.time = 0; this.available = () => true;
     this.stage = 'beginning';
     this.#buildScene();
+    this.#buildEffects();
     this.#bindInput();
     this.resize();
   }
@@ -295,7 +305,16 @@ export class World {
     const road = mat(0x7d7f8c);
     for (const [w, h, x, z] of [[70, 6, 0, 0], [6, 70, 0, 0], [70, 5, 0, -24], [5, 70, -22, 0], [5, 70, 22, 0], [70, 5, 0, 24]]) { const r = mesh(new THREE.PlaneGeometry(w, h), road, x, 0.02, z, false); r.rotation.x = -Math.PI / 2; r.receiveShadow = true; this.city.add(r); }
     const plaza = mesh(new THREE.CircleGeometry(7, 24), mat(0xe8d3a8), 0, 0.03, 0, false); plaza.rotation.x = -Math.PI / 2; this.city.add(plaza);
+    // Road markings give the town scale and readable routes through the buildings.
+    const stripeGeometry = new THREE.PlaneGeometry(0.15, 1.6), stripeMaterial = mat(0xfff0b5);
+    for (let v = -32; v <= 32; v += 4) {
+      if (Math.abs(v) < 8) continue;
+      for (const horizontal of [false, true]) { const stripe = mesh(stripeGeometry, stripeMaterial, horizontal ? v : 0, 0.045, horizontal ? 0 : v, false); stripe.rotation.x = -Math.PI / 2; if (horizontal) stripe.rotation.z = Math.PI / 2; this.city.add(stripe); }
+    }
     const fountainBase = mesh(new THREE.CylinderGeometry(1.8, 2, 0.7, 16), mat(0x9fb3c8), 0, 0.35, 0); this.city.add(fountainBase); this.city.add(mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.2, 16), mat(0x5cc8ff), 0, 0.72, 0)); this.obstacles.push({ x: 0, z: 0, r: 2.3 });
+    this.fountainDrops = [];
+    const dropGeometry = new THREE.SphereGeometry(0.08, 6, 4), dropMaterial = new THREE.MeshBasicMaterial({ color: 0xc6f4ff });
+    for (let i = 0; i < 24; i++) { const drop = mesh(dropGeometry, dropMaterial, 0, 1, 0, false); this.city.add(drop); this.fountainDrops.push(drop); }
     // Job buildings
     for (const job of JOBS) {
       const [x, z] = job.location; const g = building(6, 4 + (job.pay === 900 ? 1.5 : 0), 5, PALETTE[job.color]); g.position.set(x, 0, z);
@@ -373,27 +392,79 @@ export class World {
     this.interactables.push({ id: 'moonhouse', type: 'moon', label: 'Sign the Moon deal with Elo Musk', position: new THREE.Vector3(0, 0, -7), radius: 4 });
   }
   #bindInput() {
-    window.addEventListener('keydown', e => { if (e.target.closest?.('input')) return; this.keys.add(e.code); if (e.code === 'Space') { this.jumpQueued = true; e.preventDefault(); } });
+    window.addEventListener('keydown', e => {
+      if (this.frozen || e.target.closest?.('input, textarea, select, button, [contenteditable="true"]')) return;
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      this.keys.add(e.code);
+      if (e.code === 'Space' && !e.repeat) this.jumpQueued = true;
+    });
     window.addEventListener('keyup', e => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => this.resetInput());
     let drag = null;
-    const start = (id, x, y) => { drag = { id, x, y }; }, move = (id, x, y) => { if (!drag || drag.id !== id) return; this.yaw -= (x - drag.x) * 0.006; this.pitch = THREE.MathUtils.clamp(this.pitch + (y - drag.y) * 0.004, 0.08, 1.2); drag.x = x; drag.y = y; }, end = id => { if (drag?.id === id) drag = null; };
+    const start = (id, x, y) => { if (!this.frozen) { drag = { id, x, y }; this.canvas.setPointerCapture(id); } }, move = (id, x, y) => { if (this.frozen || !drag || drag.id !== id) return; this.yaw -= (x - drag.x) * 0.006; this.pitch = THREE.MathUtils.clamp(this.pitch + (y - drag.y) * 0.004, 0.08, 1.2); drag.x = x; drag.y = y; }, end = id => { if (drag?.id === id) drag = null; };
     this.canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && e.clientX < window.innerWidth * 0.45) return; start(e.pointerId, e.clientX, e.clientY); });
     window.addEventListener('pointermove', e => move(e.pointerId, e.clientX, e.clientY));
     window.addEventListener('pointerup', e => end(e.pointerId)); window.addEventListener('pointercancel', e => end(e.pointerId));
     this.canvas.addEventListener('wheel', e => { this.distance = THREE.MathUtils.clamp(this.distance + e.deltaY * 0.01, 5, 16); }, { passive: true });
+    this.canvas.addEventListener('lostpointercapture', e => end(e.pointerId));
     window.addEventListener('resize', () => this.resize());
   }
   resize() {
     const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
   }
+  resetInput() { this.keys.clear(); this.joy.x = this.joy.y = 0; this.sprint = false; this.jumpQueued = false; this.jumpBuffer = 0; this.velocity.set(0, 0, 0); }
+  applySettings(settings) {
+    this.reducedMotion = settings.reducedMotion;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, settings.quality === 'high' ? 2 : 1.25));
+    this.renderer.shadowMap.enabled = settings.quality === 'high';
+    this.sun.castShadow = settings.quality === 'high';
+    this.resize();
+    if (settings.reducedMotion) this.particles.forEach(p => { p.life = 0; });
+  }
+  #buildEffects() {
+    this.guide = new THREE.Group(); this.guide.visible = false; this.scene.add(this.guide);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.35, 40), new THREE.MeshBasicMaterial({ color: 0xffd94d, side: THREE.DoubleSide, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.12; this.guide.add(ring);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.1, 9, 20, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd94d, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
+    beam.position.y = 4.5; this.guide.add(beam);
+    this.particles = Array.from({ length: 96 }, () => ({ pos: new THREE.Vector3(), velocity: new THREE.Vector3(), life: 0, total: 1 }));
+    this.particleCursor = 0; this.particleDummy = new THREE.Object3D();
+    this.particleMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.13, 0), new THREE.MeshBasicMaterial(), this.particles.length);
+    this.particleMesh.frustumCulled = false;
+    this.particleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.scene.add(this.particleMesh);
+  }
+  burst(position = this.player.pos, color = 0xffd94d, count = 18) {
+    if (this.reducedMotion) return;
+    for (let i = 0; i < count; i++) {
+      const index = this.particleCursor++ % this.particles.length, p = this.particles[index];
+      p.pos.copy(position); p.pos.y += 0.5;
+      p.velocity.set((Math.random() - 0.5) * 5, 2 + Math.random() * 4, (Math.random() - 0.5) * 5);
+      p.life = p.total = 0.5 + Math.random() * 0.5;
+      this.particleMesh.setColorAt(index, new THREE.Color(color));
+    }
+    this.particleMesh.instanceColor.needsUpdate = true;
+  }
+  setGuide(target) { this.guide.visible = !!target; if (target) this.guide.position.copy(target.position); }
+  #updateEffects(dt) {
+    this.guide.children[0].scale.setScalar(this.reducedMotion ? 1 : 1 + Math.sin(this.time * 3) * 0.12);
+    this.particles.forEach((p, i) => {
+      p.life = Math.max(0, p.life - dt);
+      if (p.life) { p.velocity.y -= dt * 10; p.pos.addScaledVector(p.velocity, dt); }
+      this.particleDummy.position.copy(p.pos); this.particleDummy.scale.setScalar(p.life / p.total);
+      this.particleDummy.updateMatrix(); this.particleMesh.setMatrixAt(i, this.particleDummy.matrix);
+    });
+    this.particleMesh.instanceMatrix.needsUpdate = true;
+  }
   setCostume(name) {
     const { pos } = this.player; const heading = this.playerMesh.rotation.y;
-    this.scene.remove(this.playerMesh); this.playerMesh = buildLlama(this.bodyColor ?? 0xfff1d6, name); this.playerMesh.position.copy(pos); this.playerMesh.rotation.y = heading; this.scene.add(this.playerMesh);
+    this.scene.remove(this.playerMesh); disposeGroup(this.playerMesh); this.playerMesh = buildLlama(this.bodyColor ?? 0xfff1d6, name); this.playerMesh.position.copy(pos); this.playerMesh.rotation.y = heading; this.scene.add(this.playerMesh);
   }
   setAsset(asset, color, style) {
+    disposeGroup(this.assetGroup);
     this.assetGroup.clear();
+    if (asset) this.plotSign.material.map?.dispose();
     if (asset === 'car') { const c = car(new THREE.Color(color), style); c.rotation.y = 0.4; this.assetGroup.add(c); this.plotSign.material.map = textTexture('MY FIRST CAR', '#fffaf0'); }
     else if (asset === 'house') { this.assetGroup.add(house(new THREE.Color(color), style)); this.plotSign.material.map = textTexture('HOME SWEET HOME', '#fffaf0'); }
     this.plotSign.material.needsUpdate = true;
@@ -442,7 +513,7 @@ export class World {
   }
   stopRent() { this.rentActive = false; this.barriga.visible = false; }
   #updateBarriga(dt) {
-    if (!this.rentActive) return;
+    if (!this.rentActive || this.frozen) return;
     const b = this.barriga; const hidden = this.isHidden();
     if (!hidden) { this.barrigaTarget.copy(this.player.pos); this.barrigaLostTimer = 0; }
     else { this.barrigaLostTimer += dt; if (this.barrigaLostTimer > 2.5 && b.position.distanceTo(this.barrigaTarget) < 1.5) { this.barrigaTarget.set(this.player.pos.x + (Math.random() - 0.5) * 24, 0, this.player.pos.z + (Math.random() - 0.5) * 24); } }
@@ -476,7 +547,7 @@ export class World {
         const dx = npc.pos.x - p.pos.x, dz = npc.pos.z - p.pos.z, dist = Math.hypot(dx, dz);
         if (dist < 1.7 && (p.speed > 5.5 || (!p.grounded && p.vy < -2))) {
           npc.state = 'fly'; npc.vy = 8 + Math.random() * 3; npc.spin = 0; npc.dir = new THREE.Vector3(dx, 0, dz).normalize(); this.onBonk(npc);
-        } else if (dist < 1.4) { npc.pos.x += (dx / dist) * (1.4 - dist); npc.pos.z += (dz / dist) * (1.4 - dist); }
+        } else if (dist > 0.001 && dist < 1.4) { npc.pos.x += (dx / dist) * (1.4 - dist); npc.pos.z += (dz / dist) * (1.4 - dist); }
       }
       const swing = Math.sin(this.time * 12 + npc.pos.x) * 0.5 * (npc.speed / 2.4);
       m.userData.legs.forEach((l, i) => (l.rotation.z = swing * (i % 2 ? -1 : 1) * (i < 2 ? 1 : -1)));
@@ -486,22 +557,23 @@ export class World {
   update() {
     const dt = Math.min(this.clock.getDelta(), 0.05); this.time += dt;
     const p = this.player;
-    // input vector (camera-relative)
-    let ix = 0, iz = 0;
-    if (!this.frozen) {
-      if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) iz -= 1; if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) iz += 1;
-      if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) ix -= 1; if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) ix += 1;
-      ix += this.joy.x; iz += this.joy.y;
-    }
-    const len = Math.hypot(ix, iz); if (len > 1) { ix /= len; iz /= len; }
-    const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)), right = new THREE.Vector3(fwd.z, 0, -fwd.x);
-    const move = new THREE.Vector3().addScaledVector(fwd, -iz).addScaledVector(right, ix);
-    const speed = 7.5 * Math.min(1, len);
-    if (move.lengthSq() > 0.0001) { p.pos.addScaledVector(move.normalize(), speed * dt); p.heading = Math.atan2(move.x, move.z); }
-    p.speed = THREE.MathUtils.lerp(p.speed, speed, 0.2);
-    if (this.jumpQueued && p.grounded && !this.frozen) { p.vy = 8.5; p.grounded = false; }
+    const input = movementInput(this.keys, this.joy, this.yaw);
+    const sprinting = !this.frozen && (this.sprint || this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) && input.amount > 0;
+    const topSpeed = sprinting ? 11.5 : 7.5;
+    const targetVelocity = new THREE.Vector3(input.x * topSpeed, 0, input.z * topSpeed);
+    if (this.frozen) this.velocity.set(0, 0, 0);
+    else this.velocity.lerp(targetVelocity, 1 - Math.exp(-18 * dt));
+    p.pos.addScaledVector(this.velocity, dt);
+    if (this.velocity.lengthSq() > 0.01) p.heading = Math.atan2(this.velocity.x, this.velocity.z);
+    p.speed = this.velocity.length();
+    if (this.jumpQueued) this.jumpBuffer = 0.15;
+    else this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
+    if (this.jumpBuffer > 0 && p.grounded && !this.frozen) { p.vy = 8.5; p.grounded = false; this.jumpBuffer = 0; this.burst(p.pos, 0xfffaf0, 8); this.onJump(); }
     this.jumpQueued = false;
-    p.vy -= 22 * dt; p.pos.y = Math.max(0, p.pos.y + p.vy * dt); if (p.pos.y === 0) { p.vy = 0; p.grounded = true; }
+    if (!this.frozen) {
+      p.vy -= (this.stage === 'moon' ? 11 : 22) * dt; p.pos.y = Math.max(0, p.pos.y + p.vy * dt);
+      if (p.pos.y === 0) { if (!p.grounded) { this.burst(p.pos, 0xfffaf0, 12); this.onLand(); } p.vy = 0; p.grounded = true; }
+    }
     // bounds + obstacles
     const limit = this.stage === 'moon' ? 40 : 46; const r = Math.hypot(p.pos.x, p.pos.z); if (r > limit) { p.pos.x *= limit / r; p.pos.z *= limit / r; }
     if (this.stage !== 'moon') for (const o of this.obstacles) { const dx = p.pos.x - o.x, dz = p.pos.z - o.z, d = Math.hypot(dx, dz); if (d < o.r + 0.6 && d > 0.001) { const push = (o.r + 0.6 - d) / d; p.pos.x += dx * push; p.pos.z += dz * push; } }
@@ -515,27 +587,31 @@ export class World {
     // friends / decor
     if (this.girlfriend.visible) this.girlfriend.userData.head.rotation.z = Math.sin(this.time * 1.5) * 0.08;
     for (const [, c] of this.coins) { c.rotation.z += dt * 2.5; c.position.y = 1 + Math.sin(this.time * 3 + c.position.x) * 0.15; }
-    for (const [id, c] of this.coins) if (c.visible && c.position.distanceTo(p.pos) < 1.4) { c.visible = false; this.onCoin(id); }
+    for (const [id, c] of this.coins) if (!this.frozen && this.stage !== 'moon' && c.visible && c.position.distanceTo(p.pos) < 1.8) { this.burst(c.position, 0xffd94d, 22); c.visible = false; this.onCoin(id); }
     for (const c of this.clouds) { c.position.x += dt * 0.6; if (c.position.x > 70) c.position.x = -70; }
     for (const q of Object.values(this.questMarkers)) if (q.visible) { q.userData.star.rotation.y += dt * 2; q.userData.star.position.y = 4 + Math.sin(this.time * 2) * 0.3; }
     this.#updateBarriga(dt);
     if (!this.frozen) this.#updateNpcs(dt);
+    this.#updateEffects(dt);
+    if (this.stage !== 'moon') this.fountainDrops.forEach((drop, i) => { const t = ((this.reducedMotion ? 0 : this.time * 0.65) + i / 24) % 1, a = i * 2.4; drop.position.set(Math.cos(a) * t * 1.3, 0.85 + Math.sin(t * Math.PI) * 2.1, Math.sin(a) * t * 1.3); });
     // camera
     const desired = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch)).multiplyScalar(this.distance).add(p.pos).add(new THREE.Vector3(0, 1.6, 0));
     desired.y = Math.max(desired.y, 0.8);
     this.camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
     this.camera.lookAt(p.pos.x, p.pos.y + 1.8, p.pos.z);
+    const fov = this.reducedMotion ? 58 : (sprinting ? 64 : 58);
+    if (Math.abs(this.camera.fov - fov) > 0.01) { this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, fov, 1 - Math.exp(-5 * dt)); this.camera.updateProjectionMatrix(); }
     this.sun.position.set(p.pos.x + 30, 50, p.pos.z + 20); this.sun.target.position.copy(p.pos); this.sun.target.updateMatrixWorld();
     this.renderer.render(this.scene, this.camera);
   }
 }
 
 /* Small standalone preview renderer for character cards */
-export function preview(canvas, costume, bodyColor = 0xfff1d6) {
+export function preview(canvas, costume, bodyColor = 0xfff1d6, reducedMotion = false) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); renderer.setSize(canvas.clientWidth || 160, canvas.clientHeight || 160, false);
   const scene = new THREE.Scene(); scene.add(new THREE.HemisphereLight(0xffffff, 0x9dd39a, 1.4)); const l = new THREE.DirectionalLight(0xffffff, 2); l.position.set(3, 6, 4); scene.add(l);
   const cam = new THREE.PerspectiveCamera(40, 1, 0.1, 50); cam.position.set(5.5, 3.2, 5.5); cam.lookAt(0, 1.4, 0);
   const llama = buildLlama(bodyColor, costume); scene.add(llama);
-  let raf; const tick = () => { llama.rotation.y += 0.012; renderer.render(scene, cam); raf = requestAnimationFrame(tick); }; tick();
-  return () => { cancelAnimationFrame(raf); renderer.dispose(); };
+  let raf, last = performance.now(); const tick = now => { if (!reducedMotion && !document.hidden) llama.rotation.y += Math.min(0.05, (now - last) / 1000) * 0.72; last = now; renderer.render(scene, cam); raf = requestAnimationFrame(tick); }; tick(last);
+  return () => { cancelAnimationFrame(raf); disposeGroup(scene); renderer.dispose(); };
 }
