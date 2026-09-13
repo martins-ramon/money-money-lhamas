@@ -161,6 +161,18 @@ function close() {
 }
 const head = (title, sub = '') => `<div class="card"><div class="panel-head"><div><h2>${title}</h2>${sub ? `<p class="muted">${sub}</p>` : ''}</div><button class="btn icon ghost" data-close aria-label="Close">${icon('close')}</button></div></div>`;
 const stat = (label, value, cls = '') => `<div class="stat"><small>${label}</small><span class="money ${cls}">${value}</span></div>`;
+const gameCredits = () => `
+  <section class="game-credits" lang="pt-BR" aria-labelledby="game-credits-heading">
+    <img class="game-credits-photo" src="${import.meta.env.BASE_URL}images/vicente.jpg" alt="Foto de Vicente Mitczuck da Silva" width="1206" height="1918">
+    <div class="game-credits-copy">
+      <h2 id="game-credits-heading">Créditos</h2>
+      <p class="game-credits-byline">Um jogo de</p>
+      <h3>Vicente Mitczuck da Silva</h3>
+      <p>11 anos · Maple Bear Porto Alegre</p>
+      <p class="game-credits-class">Year 6 - Morning</p>
+      <p class="game-credits-subject">Apresentado na aula de matemática financeira</p>
+    </div>
+  </section>`;
 
 function titleScreen() {
   const el = open(`
@@ -177,6 +189,7 @@ function titleScreen() {
       </div>
       <button class="btn ghost small" data-title-sound>${icon(state.muted ? 'mute' : 'sound')} Sound ${state.muted ? 'off — tap to enable' : 'on'}</button>
       <p class="credits">${TOUCH ? 'Drag the joystick to walk · swipe the right side to look around · big buttons to jump and act.' : 'WASD / arrows to walk · drag the mouse to look · Space to jump · E to interact.'}</p>
+      ${gameCredits()}
     </div>`, 'scene');
   const stops = [...el.querySelectorAll('[data-pick]')].map(b => preview(b.querySelector('canvas'), b.dataset.pick === 'anna' ? 'Girlfriend' : 'Street dreamer', b.dataset.pick === 'anna' ? 0xfff1d6 : 0xe8caa4, settings.reducedMotion));
   const begin = () => { stops.forEach(s => s()); close(); canvas.focus(); hud.classList.remove('hidden'); $('[data-touch]').classList.toggle('hidden', !TOUCH); syncHUD(); if (!state.shifts || !Object.keys(state.shifts).length) intro(); if (state.stage === 'timeskip') pendingStages.push(['careers', 'timeskip']); scheduleRent(); sfx('ok'); };
@@ -266,7 +279,8 @@ function menuPanel() {
         <label class="setting-toggle"><span>Reduced motion<small>Gentler celebrations, no particles or sprint zoom</small></span><input type="checkbox" data-motion ${settings.reducedMotion ? 'checked' : ''}></label>
         <label class="setting-toggle"><span>Show minimap</span><input type="checkbox" data-show-map ${settings.showMap ? 'checked' : ''}></label>
       </div>
-    </div>`);
+    </div>
+    ${gameCredits()}`);
   el.querySelector('[data-mute]').onclick = () => { dispatch({ type: 'mute' }); menuPanel(); };
   const apply = () => {
     settings.quality = el.querySelector('[data-quality]').value; settings.reducedMotion = el.querySelector('[data-motion]').checked; settings.showMap = el.querySelector('[data-show-map]').checked;
