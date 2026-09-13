@@ -1,5 +1,5 @@
 entrypoint = "index.html"
-modules = ["nodejs-22"]
+modules = ["nodejs-20", "bash", "web"]
 run = "npm ci --include=dev && npm run dev"
 
 [[ports]]
@@ -10,3 +10,6 @@ externalPort = 80
 deploymentTarget = "static"
 build = ["sh", "-c", "npm ci --include=dev && npm run build"]
 publicDir = "dist"
+
+[nix]
+channel = "stable-25_05"
