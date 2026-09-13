@@ -243,14 +243,34 @@ function mansion() {
   g.add(mesh(new THREE.BoxGeometry(12, 5, 6), mat(PALETTE.cream), 0, 2.5, 0));
   g.add(mesh(new THREE.BoxGeometry(4, 7, 4), mat(PALETTE.white), 0, 3.5, 0.5));
   for (const x of [-4.5, 4.5]) { const r = mesh(new THREE.ConeGeometry(2.8, 2.2, 4), mat(PALETTE.lilac), x, 6.1, 0); r.rotation.y = Math.PI / 4; g.add(r); }
-  g.add(mesh(new THREE.ConeGeometry(3, 2.4, 4), mat(PALETTE.gold), 0, 8.2, 0.5)).rotation.y = Math.PI / 4;
-  g.add(mesh(new THREE.BoxGeometry(1.8, 2.6, 0.3), mat(PALETTE.ink), 0, 1.3, 3.1));
+  const centralRoof = mesh(new THREE.ConeGeometry(3, 2.4, 4), mat(PALETTE.gold), 0, 8.2, 0.5);
+  centralRoof.rotation.y = Math.PI / 4; g.add(centralRoof);
+  const door = mesh(new THREE.BoxGeometry(1.8, 2.6, 0.3), mat(PALETTE.ink), 0, 1.3, 3.1); door.name = 'front-door'; g.add(door);
   for (const x of [-4, -2, 2, 4]) for (const y of [1.5, 3.7]) g.add(mesh(new THREE.BoxGeometry(1.1, 1.1, 0.2), mat(PALETTE.sky), x, y, 3.05));
   for (const x of [-1.7, 1.7]) g.add(mesh(new THREE.CylinderGeometry(0.3, 0.3, 5, 10), mat(PALETTE.white), x, 2.5, 3.2));
   const fountain = new THREE.Group(); fountain.position.set(6, 0, 8);
   fountain.add(mesh(new THREE.CylinderGeometry(2, 2.2, 0.6, 16), mat(0x9fb3c8), 0, 0.3, 0)); fountain.add(mesh(new THREE.CylinderGeometry(1.7, 1.7, 0.2, 16), mat(0x5cc8ff), 0, 0.62, 0)); fountain.add(mesh(new THREE.CylinderGeometry(0.25, 0.4, 1.6, 10), mat(0x9fb3c8), 0, 1.2, 0));
   g.add(fountain);
   return g;
+}
+export function buildMansionEstate() {
+  const group = new THREE.Group(); group.position.set(0, 0, 32); group.rotation.y = Math.PI; group.scale.setScalar(0.7);
+  const house = mansion(); house.name = 'mansion-building'; group.add(house);
+  // The path, door, cars and fountain all share the same front-facing transform.
+  group.add(mesh(new THREE.BoxGeometry(2.6, 0.08, 4), mat(0xe8d3a8), 0, 0.04, 5.3, false));
+  for (const [x, z, color, style] of [[-7, 9, 0xff6b6b, 'sporty'], [7, 9, 0xf6b53d, 'sporty'], [-7, 13, 0x2b2a33, 'classic']]) {
+    const vehicle = car(color, style, 1.1); vehicle.position.set(x, 0, z); vehicle.rotation.y = Math.PI / 2; group.add(vehicle);
+  }
+  group.updateMatrixWorld(true);
+  const entrance = group.localToWorld(new THREE.Vector3(0, 0, 5));
+  const front = new THREE.Vector3(0, 0, 1).transformDirection(group.matrixWorld);
+  const fountain = group.localToWorld(new THREE.Vector3(6, 0, 8));
+  return { group, entrance, front, obstacles: [{ x: 0, z: 32, r: 6.5 * 0.7 }, { x: fountain.x, z: fountain.z, r: 2.4 * 0.7 }] };
+}
+
+export function mansionViewDistance(aspect) {
+  // Portrait screens need more horizontal breathing room around the facade.
+  return Math.min(42, 18 / Math.min(1, Math.max(0.4, aspect)));
 }
 function hq() {
   const g = new THREE.Group();
@@ -470,15 +490,15 @@ export class World {
     this.plotSign.material.needsUpdate = true;
   }
   setStage(stage, state) {
+    const previousStage = this.stage;
     this.stage = stage;
     const advanced = ['careers', 'timeskip', 'robbery', 'business', 'moon', 'freeplay'].includes(stage);
     for (const it of this.interactables) if (it.type === 'job' && it.group.userData.closed) it.group.userData.closed.visible = JOBS.find(j => j.id === it.id).pay === 900 && !advanced;
     const rich = ['robbery', 'business', 'moon', 'freeplay'].includes(stage);
     if (rich && !this.mansionGroup) {
-      this.mansionGroup = new THREE.Group(); this.mansionGroup.position.set(0, 0, 32); this.mansionGroup.rotation.y = Math.PI; this.mansionGroup.add(mansion());
-      for (const [x, z, c, s] of [[-7, 9, 0xff6b6b, 'sporty'], [7, 9, 0xf6b53d, 'sporty'], [-7, 13, 0x2b2a33, 'classic']]) { const v = car(c, s, 1.1); v.position.set(x, 0, z); v.rotation.y = Math.PI / 2; this.mansionGroup.add(v); }
-      this.city.add(this.mansionGroup); this.obstacles.push({ x: 0, z: 32, r: 6.5 }, { x: -6, z: 24, r: 2.4 });
-      this.interactables.push({ id: 'mansion', type: 'mansion', label: 'Enter your mansion', position: new THREE.Vector3(0, 0, 27), radius: 3.5 });
+      const estate = buildMansionEstate(); this.mansionGroup = estate.group;
+      this.city.add(this.mansionGroup); this.obstacles.push(...estate.obstacles);
+      this.interactables.push({ id: 'mansion', type: 'mansion', label: 'Enter your mansion', position: estate.entrance, approachDirection: estate.front, radius: 2.5 });
       this.plot.visible = false;
     }
     if (this.mansionGroup) { this.mansionGroup.visible = rich; this.plot.visible = !rich && !!state?.asset || stage === 'purchase' || stage === 'beginning'; }
@@ -489,7 +509,13 @@ export class World {
     this.scene.background.set(onMoon ? 0x0b0d1a : PALETTE.sky); this.scene.fog.color.set(onMoon ? 0x0b0d1a : PALETTE.sky); this.scene.fog.near = onMoon ? 90 : 60;
     this.hemi.intensity = onMoon ? 0.5 : 1.1; this.hemi.groundColor.set(onMoon ? 0x444a66 : 0x9dd39a);
     if (onMoon) { this.player.pos.set(0, 0, 6); this.girlfriend.visible = true; this.girlfriend.position.set(3, 0, 2); this.girlfriend.rotation.y = Math.PI; }
-    if (stage === 'robbery' && this.player.pos.z < 18) this.player.pos.set(0, 0, 18);
+    if (stage === 'robbery' && previousStage !== stage) {
+      this.player.pos.set(0, 0, 18); this.player.heading = 0; this.playerMesh.rotation.y = -Math.PI / 2;
+      this.yaw = Math.PI; this.pitch = 0.35; this.resetInput();
+      const distance = Math.max(this.distance, mansionViewDistance(this.camera.aspect));
+      this.camera.position.set(0, 1.6 + Math.sin(this.pitch) * distance, 18 - Math.cos(this.pitch) * distance);
+      this.camera.lookAt(0, 1.8, 18);
+    }
     for (const id of ['picnic', 'explorer', 'helper']) this.questMarkers[id].visible = stage === 'freeplay' && !state?.sideQuests?.includes(id);
     this.bbq.visible = stage === 'freeplay';
   }
@@ -500,6 +526,7 @@ export class World {
     for (const it of this.interactables) {
       if (it.type === 'moon' ? this.stage !== 'moon' : this.stage === 'moon') continue;
       if (it.type === 'home' && !this.plot.visible) continue;
+      if (it.approachDirection && this.player.pos.clone().sub(it.position).dot(it.approachDirection) < 0) continue;
       const d = it.position.distanceTo(this.player.pos);
       if (d < it.radius && d < bestD && this.available(it)) { best = it; bestD = d; }
     }
@@ -595,7 +622,9 @@ export class World {
     this.#updateEffects(dt);
     if (this.stage !== 'moon') this.fountainDrops.forEach((drop, i) => { const t = ((this.reducedMotion ? 0 : this.time * 0.65) + i / 24) % 1, a = i * 2.4; drop.position.set(Math.cos(a) * t * 1.3, 0.85 + Math.sin(t * Math.PI) * 2.1, Math.sin(a) * t * 1.3); });
     // camera
-    const desired = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch)).multiplyScalar(this.distance).add(p.pos).add(new THREE.Vector3(0, 1.6, 0));
+    const mansionProximity = this.mansionGroup?.visible && this.stage !== 'moon' ? THREE.MathUtils.clamp((24 - Math.hypot(p.pos.x, p.pos.z - 32)) / 10, 0, 1) : 0;
+    const framingDistance = THREE.MathUtils.lerp(this.distance, Math.max(this.distance, mansionViewDistance(this.camera.aspect)), mansionProximity);
+    const desired = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch)).multiplyScalar(framingDistance).add(p.pos).add(new THREE.Vector3(0, 1.6, 0));
     desired.y = Math.max(desired.y, 0.8);
     this.camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
     this.camera.lookAt(p.pos.x, p.pos.y + 1.8, p.pos.z);
