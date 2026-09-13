@@ -8,20 +8,20 @@ O jogo é em **inglês**, com visual cartoon (estilo Looney Tunes) e uma pitada 
 
 ```bash
 npm ci
-npm run dev      # servidor de desenvolvimento em http://localhost:5174
+npm run dev      # servidor de desenvolvimento em http://localhost:5000
 npm run build    # gera a versão final em dist/
 npm run preview  # confere a versão final em http://localhost:4173
 npm test         # testes da lógica financeira (node --test)
 ```
 
-Requer Node.js 22.12 ou mais novo (com nvm, execute `nvm use`). `npm start` também inicia o desenvolvimento. Abra http://localhost:5174 no navegador; mantenha o terminal rodando e use Ctrl+C para encerrar. Se a porta estiver ocupada, encerre o outro servidor antes de iniciar.
+Requer Node.js 22.12 ou mais novo (com nvm, execute `nvm use`). `npm start` também inicia o desenvolvimento. Abra http://localhost:5000 no navegador; mantenha o terminal rodando e use Ctrl+C para encerrar. Se a porta estiver ocupada, encerre o outro servidor antes de iniciar.
 
 Não precisa de backend: o progresso é salvo no `localStorage` do navegador. Cada navegador e endereço mantém seu próprio progresso; o save de localhost não é transferido automaticamente para o Replit.
 
 ## Rodar e hospedar no Replit
 
 1. Importe este repositório no Replit, incluindo o arquivo oculto `.replit`.
-2. Clique em **Run**. A configuração instala as dependências e inicia o jogo; abra o **Preview** para jogar. O servidor escuta em `0.0.0.0:5174`, mapeado para a porta externa 80, e permite o domínio informado pelo Replit em `REPLIT_DEV_DOMAIN`.
+2. Clique em **Run**. A configuração inicia o jogo; abra o **Preview** para jogar. O servidor escuta em `0.0.0.0:5000`, mapeado para a porta externa 80, e aceita o domínio do proxy do Replit.
 3. Quando o jogo estiver pronto, use **Publish** com o tipo **Static**. O arquivo `.replit` configura o build `npm ci --include=dev && npm run build` e a pasta pública `dist`.
 
 A publicação serve os arquivos finais, sem precisar manter um servidor Node.js. `npm run preview` serve apenas para conferir o build localmente. Configuração baseada na [documentação do Replit](https://docs.replit.com/features/project-setup/configuration) e na [configuração de publicação estática](https://docs.replit.com/features/deployment-customization/static-deployments-advanced).

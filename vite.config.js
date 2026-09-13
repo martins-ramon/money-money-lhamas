@@ -1,17 +1,11 @@
 import { defineConfig } from 'vite';
 
-const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
-
 export default defineConfig({
   server: {
     host: '0.0.0.0',
-    port: 5174,
+    port: 5000,
     strictPort: true,
-    allowedHosts: replitDevDomain ? [replitDevDomain] : [],
-    // Replit exposes the development server through an HTTPS proxy.
-    hmr: replitDevDomain
-      ? { protocol: 'wss', host: replitDevDomain, clientPort: 443 }
-      : undefined,
+    allowedHosts: true,
   },
   preview: {
     host: '0.0.0.0',
