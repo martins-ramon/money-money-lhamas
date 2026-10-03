@@ -1,3 +1,5 @@
+import { getLanguage, registerTranslations } from './i18n.js';
+
 // Fictional, self-contained money challenges. Every answer includes an explanation.
 export const FINANCE_MISSIONS = [
   {
@@ -43,3 +45,67 @@ export const FINANCE_MISSIONS = [
     ],
   },
 ];
+
+// Presentation-only translations keep mission IDs, answers and rewards independent of language.
+const PORTUGUESE_MISSIONS = {
+  budget: {
+    title: 'Planeje sua mesada', description: 'Decida o destino de cada dólar antes de gastar.',
+    questions: [
+      { prompt: 'Você tem $100. O almoço custa $30 e a passagem de ônibus custa $20. Quanto sobra?', choices: ['$80', '$50', '$30'], explanation: '$100 − $30 − $20 = $50 depois de pagar suas necessidades.' },
+      { prompt: 'Você quer guardar $40 dos $50 que sobraram. Quanto pode gastar em um agrado?', choices: ['$10', '$40', '$50'], explanation: '$50 − $40 = $10. Um orçamento reserva dinheiro para seu objetivo e um pequeno agrado.' },
+    ],
+  },
+  discount: {
+    title: 'Encontre o desconto de verdade', description: 'Calcule o preço final antes de escolher uma promoção.',
+    questions: [
+      { prompt: 'Um capacete de $100 está com 20% de desconto. Qual é o preço na promoção?', choices: ['$20', '$120', '$80'], explanation: '20% de $100 são $20. Subtraia o desconto: $100 − $20 = $80.' },
+      { prompt: 'O mesmo capacete custa $75 em outra loja. Qual preço é menor?', choices: ['$80 com a placa de promoção', '$75 na outra loja', 'Os dois preços são iguais'], explanation: '$75 são $5 a menos que $80. Compare os preços finais, mesmo quando a placa diz PROMOÇÃO.' },
+    ],
+  },
+  saving: {
+    title: 'Poupe para um objetivo', description: 'Pratique poupar regularmente e aprenda como funcionam os juros do jogo.',
+    questions: [
+      { prompt: 'Um skate custa $120. Você guarda $30 por semana, começando com $0. De quantas semanas precisa?', choices: ['3 semanas', '4 semanas', '6 semanas'], explanation: '$120 ÷ $30 = 4 semanas. Pequenas quantias guardadas regularmente ajudam a alcançar um objetivo maior.' },
+      { prompt: 'Neste jogo, $100 guardados rendem 2% em um turno de trabalho. Qual será o saldo depois desse turno?', choices: ['$102', '$120', '$200'], explanation: '2% de $100 são $2, então o novo saldo é $102. Esta é uma regra do jogo; taxas e riscos da poupança real variam.' },
+    ],
+  },
+  'unit-price': {
+    title: 'Compare os pacotes de suco', description: 'Descubra o preço de cada unidade para comparar pacotes diferentes.',
+    questions: [
+      { prompt: 'Um pacote com 4 caixinhas de suco custa $12. Quanto custa cada caixinha?', choices: ['$4', '$8', '$3'], explanation: '$12 ÷ 4 = $3 por caixinha de suco.' },
+      { prompt: 'Você precisa de 6 caixinhas de suco. Um pacote com 6 custa $15, e cada caixinha avulsa custa $3. Qual opção custa menos?', choices: ['O pacote de $15', 'Seis caixinhas avulsas', 'As duas opções custam o mesmo'], explanation: 'Seis caixinhas avulsas custam 6 × $3 = $18. O pacote de $15 economiza $3 quando você precisa das seis.' },
+    ],
+  },
+  change: {
+    title: 'Confira seu troco', description: 'Some o valor da compra e confira o dinheiro que recebe de volta.',
+    questions: [
+      { prompt: 'Um sanduíche custa $12 e um suco custa $8. Você paga com $50. Quanto deve receber de troco?', choices: ['$20', '$30', '$42'], explanation: 'O total é $12 + $8 = $20. Seu troco é $50 − $20 = $30.' },
+      { prompt: 'Você recebe apenas $25 de troco. O que deve fazer?', choices: ['Sempre ignorar', 'Pedir mais $25', 'Conferir a nota e perguntar com educação sobre os $5 que faltam'], explanation: '$30 − $25 = $5 que faltam. Conferir a nota com educação ajuda todos a corrigir um erro.' },
+    ],
+  },
+  'business-plan': {
+    title: 'Cuide de uma barraca de limonada', description: 'Separe as vendas dos custos para descobrir seu lucro.',
+    questions: [
+      { prompt: 'Você vende 10 limonadas por $5 cada. Os ingredientes e copos custam $20 no total. Qual é seu lucro?', choices: ['$50', '$30', '$70'], explanation: 'As vendas somam 10 × $5 = $50. Lucro é o valor das vendas menos os custos: $50 − $20 = $30.' },
+      { prompt: 'Você reserva $10 dos $30 de lucro para comprar materiais no futuro. Quanto sobra para seu objetivo de poupança?', choices: ['$20', '$30', '$40'], explanation: '$30 − $10 = $20. Reservar dinheiro para custos futuros ajuda um pequeno negócio a continuar funcionando.' },
+    ],
+  },
+};
+
+for (const mission of FINANCE_MISSIONS) {
+  const translated = PORTUGUESE_MISSIONS[mission.id];
+  registerTranslations({ [mission.title]: translated.title, [mission.description]: translated.description });
+  mission.questions.forEach((question, index) => {
+    const localized = translated.questions[index];
+    registerTranslations({ [question.prompt]: localized.prompt, [question.explanation]: localized.explanation });
+    question.choices.forEach((choice, choiceIndex) => registerTranslations({ [choice]: localized.choices[choiceIndex] }));
+  });
+}
+
+export function financeMissions() {
+  if (getLanguage() !== 'pt') return FINANCE_MISSIONS;
+  return FINANCE_MISSIONS.map(mission => {
+    const translated = PORTUGUESE_MISSIONS[mission.id];
+    return { ...mission, ...translated, questions: mission.questions.map((question, index) => ({ ...question, ...translated.questions[index] })) };
+  });
+}

@@ -1,11 +1,12 @@
 import { JOBS } from './model.js';
+import { t } from './i18n.js';
 
 export function celebrate(root, title, detail, reducedMotion = false) {
   root.replaceChildren();
   const banner = document.createElement('div'); banner.className = 'achievement';
   const medal = document.createElement('span'); medal.className = 'achievement-medal'; medal.textContent = '★';
   const copy = document.createElement('div');
-  const label = document.createElement('small'); label.textContent = 'A LITTLE HOOFSTEP. A BIG WIN.';
+  const label = document.createElement('small'); label.textContent = t('A LITTLE HOOFSTEP. A BIG WIN.', 'UM PEQUENO PASSO. UMA GRANDE VITÓRIA.');
   const heading = document.createElement('strong'); heading.textContent = title;
   const description = document.createElement('span'); description.textContent = detail;
   copy.append(label, heading, description); banner.append(medal, copy); root.append(banner);

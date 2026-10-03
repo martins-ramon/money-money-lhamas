@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { activity, movementInput, missionFor, readSettings } from '../src/experience.js';
 import { act, initialState, JOBS } from '../src/model.js';
 import { FINANCE_MISSIONS } from '../src/finance-missions.js';
+import { getLanguage, setLanguage } from '../src/i18n.js';
 
 const move = (keys, yaw = 0, joy = { x: 0, y: 0 }) => movementInput(new Set(keys), joy, yaw);
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
@@ -93,4 +94,23 @@ test('a finished activity step can advance once and then be safely cancelled', a
   const done = session.until(resolve => { finish = resolve; });
   finish(); finish(); await done;
   session.cancel();
+});
+
+test('mission guide changes language without changing destination or progress', t => {
+  const previous = getLanguage(); t.after(() => setLanguage(previous));
+  for (const stage of ['beginning', 'purchase', 'careers', 'timeskip', 'robbery', 'business', 'moon', 'freeplay']) {
+    const state = { ...initialState(), started: true, stage };
+    const original = structuredClone(state);
+    setLanguage('en'); const english = missionFor(state);
+    setLanguage('pt'); const portuguese = missionFor(state);
+    assert.notEqual(portuguese.title, english.title, stage);
+    assert.notEqual(portuguese.detail, english.detail, stage);
+    assert.notEqual(portuguese.count, english.count, stage);
+    assert.equal(portuguese.id, english.id);
+    assert.equal(portuguese.progress, english.progress);
+    assert.deepEqual(state, original);
+  }
+  const financeState = { ...initialState(), started: true, stage: 'freeplay', celebration: true };
+  assert.equal(missionFor(financeState).title, 'Planeje sua mesada');
+  assert.equal(missionFor({ ...financeState, location: 'moon' }).title, 'Sua casa entre as estrelas');
 });

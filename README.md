@@ -2,7 +2,9 @@
 
 *Little hooves. Big dreams.* Um jogo 3D de **matemática financeira** feito para o navegador: você começa como uma lhama sem-teto e termina com uma casa na Lua, aprendendo a ganhar, poupar, investir e empreender no caminho.
 
-O jogo é em **inglês**, com visual cartoon (estilo Looney Tunes) e uma pitada de caos à la Goat Simulator. Funciona no computador (teclado + mouse) e no celular (joystick virtual).
+O jogo está disponível em **português e inglês**, com visual cartoon (estilo Looney Tunes) e uma pitada de caos à la Goat Simulator. Funciona no computador (teclado + mouse) e no celular (joystick virtual).
+
+Escolha **Português** ou **English** na tela inicial ou no menu durante a partida. No primeiro acesso, o jogo usa português quando esse é o idioma do navegador; nos demais casos, usa inglês. Sua escolha fica salva separadamente do progresso e vale nas próximas visitas. A troca é imediata: atualiza menus, instruções, missões, minigames, mensagens e placas da cidade e da Lua, sem reiniciar a partida nem desconectar da sala multiplayer. Cada jogador pode usar seu próprio idioma. A moeda continua sendo o **dólar (USD)**, com os mesmos preços e saldos; selecionar português não converte os valores para reais.
 
 ## Como rodar
 
@@ -30,11 +32,15 @@ O progresso continua salvo no `localStorage` do navegador. Cada navegador e ende
 
 O Replit documenta a escolha do tipo em [Deployment types](https://docs.replit.com/features/publishing/deployment-types) e os comandos de build/execução em [App Configuration](https://docs.replit.com/features/project-setup/configuration).
 
+O log `VITE ... ready` é esperado no **Run/Preview**. Na publicação com `npm run serve`, o log é `Money Money Lhamas is running on port 5000` (ou a porta definida em `PORT`). Depois de atualizar o código, republique para aplicar as correções no domínio público.
+
 ## Jogar online com amigos
 
-Abra **Play online**, escolha um nome e crie uma sala. Compartilhe o código de **seis caracteres** ou o link exibido para que os amigos entrem na mesma sala, com até **oito jogadores**. Todos precisam acessar a mesma instalação do jogo; uma sala no desenvolvimento local não aparece na publicação do Replit.
+Abra **Jogar online / Play online**, escolha um nome e crie uma sala. Compartilhe o código de **seis caracteres** ou o link exibido para que os amigos entrem na mesma sala, com até **oito jogadores**. Todos precisam acessar a mesma instalação do jogo; uma sala no desenvolvimento local não aparece na publicação do Replit.
 
 As salas mostram a presença, posição, roupa, dança, voo e veículo dos amigos. Para enxergar outro jogador, os dois precisam estar no mesmo lugar: cidade ou Lua. Dinheiro, missões, história e salvamento continuam independentes em cada navegador; NPCs e atividades são simulados localmente. Não há chat.
+
+A sincronização usa requisições HTTP curtas com resposta JSON completa, combinando envio de posição e recebimento dos amigos. A abertura da sala não depende de um fluxo SSE contínuo, que pode ficar retido por intermediários da hospedagem e provocar timeout. O cliente só indica conexão concluída após receber uma resposta autenticada válida.
 
 As salas são temporárias. Reiniciar ou republicar o servidor descarta as salas, sem apagar os saves dos navegadores. Após perder a conexão, entre novamente; se a sala já tiver sido encerrada, crie outra e compartilhe o novo código. O jogo individual continua disponível fora das salas.
 
@@ -43,14 +49,14 @@ As salas são temporárias. Reiniciar ou republicar o servidor descarta as salas
 | Ação | Computador | Celular |
 | --- | --- | --- |
 | Andar | WASD ou setas | Joystick (esquerda) |
-| Correr | Segurar Shift | Botão **Run** (ativa/desativa) |
+| Correr | Segurar Shift | Botão **Correr / Run** (ativa/desativa) |
 | Olhar | Arrastar o mouse | Deslizar no lado direito da tela |
-| Pular | Espaço | Botão **Jump** |
-| Interagir, entrar ou sair de veículo | E ou Enter | Botão **Action** |
+| Pular | Espaço | Botão **Pular / Jump** |
+| Interagir, entrar ou sair de veículo | E ou Enter | Botão **Ação / Action** |
 | Dirigir, pilotar ou guiar planador | WASD ou setas | Joystick |
-| Voar ou pousar com skin compatível | F | Botão **Fly** |
-| Dançar ou parar de dançar | B | Botão **Dance** |
-| Atirar leite com Cyborg | Q | Botão **Milk** |
+| Voar ou pousar com skin compatível | F | Botão **Voar / Fly** |
+| Dançar ou parar de dançar | B | Botão **Dançar / Dance** |
+| Atirar leite com Cyborg | Q | Botão **Leite / Milk** |
 | Fechar painel | Esc | Botão × |
 | Guia da cidade | M ou botão de mapa | Botão de mapa |
 | Pausar | Esc durante a exploração | Menu |
@@ -109,9 +115,11 @@ index.html                  página única
 server.mjs                  servidor de produção: dist/ + API de salas
 server/rooms.js             salas temporárias, sessões e eventos multiplayer
 vite.config.js              Vite e API de salas em dev/preview
-src/main.js                 HUD, painéis, cutscenes, aluguel e loop principal
+src/main.js                 HUD, painéis, seleção de idioma, cutscenes e loop principal
+src/i18n.js                 idioma ativo, preferência salva e traduções de apresentação
 src/model.js                estado, salvamento e regras financeiras
 src/world.js                cena 3D, locomoção, veículos e habilidades
+src/world-localization.js   rótulos do mundo e placas traduzidos sem recriar a cena
 src/world-expansion.js      novos bairros, praia, marina, portais e limites
 src/avatars.js              skins e humanos cartoon construídos em Three.js
 src/finance-missions.js     catálogo das seis missões financeiras
@@ -128,7 +136,10 @@ tests/experience.test.js    controles, progressão e cancelamento
 tests/minigames.test.js     interações e pausa em DOM simulado
 tests/mansion.test.js       entrada e enquadramento da mansão
 tests/world-adventure.test.js limites, veículos, voo e localização
+tests/world-language.test.js troca de idioma preservando mundo, veículos e texturas
 tests/multiplayer.test.js   salas, clientes e servidor de produção
 ```
+
+A preferência de idioma usa a chave `money-money-lhamas-language-v1` no `localStorage`, independente da partida e das demais preferências. Se o armazenamento estiver bloqueado, a seleção continua funcionando durante a sessão. As traduções mudam apenas a apresentação: IDs, nomes internos de skins, mensagens de sincronização, saldos e saves mantêm o mesmo contrato. `World.refreshLanguage()` atualiza rótulos e texturas das placas, preservando as posições e o veículo em uso.
 
 Abra o jogo com `?debug` na URL para expor `window.__mml` (estado, mundo, teletransporte e multiplayer) e facilitar testes.

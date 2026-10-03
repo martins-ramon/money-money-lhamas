@@ -2,7 +2,7 @@
 export class Multiplayer {
   constructor({ onChange = () => {}, onPeers = () => {}, onError = () => {}, baseUrl = '', fetch: fetchRequest = globalThis.fetch.bind(globalThis), updateMs = 100, heartbeatMs = 20000 } = {}) {
     this.onChange = onChange; this.onPeers = onPeers; this.onError = onError;
-    this.baseUrl = baseUrl; this.fetch = fetchRequest; this.updateMs = updateMs; this.heartbeatMs = heartbeatMs;
+    this.baseUrl = baseUrl; this.fetch = fetchRequest; this.updateMs = Math.max(100, updateMs); this.heartbeatMs = heartbeatMs;
     this.status = 'disconnected'; this.playerId = null; this.peers = [];
     this._session = null; this._pending = null; this._generation = 0; this._latest = null; this._serialized = '';
     this._pagehide = () => { void this.leave(); };
@@ -59,19 +59,15 @@ export class Multiplayer {
       session = { ...credentials, controller: new AbortController(), lastMessage: Date.now(), sending: false, pinging: false, sent: '' };
       if (generation !== this._generation) { void this._notifyLeave(session); return null; }
       this._pending = null; this._session = session; this.playerId = session.playerId;
-      const timeout = setTimeout(() => session.controller.abort(), 10000); timeout.unref?.();
-      let response;
-      try { response = await this.fetch(`${this.baseUrl}/api/rooms/${session.code}/events`, { headers: { Authorization: `Bearer ${session.token}`, Accept: 'text/event-stream' }, signal: session.controller.signal, credentials: 'same-origin', cache: 'no-store' }); }
-      finally { clearTimeout(timeout); }
+      // Complete HTTP responses also work through hosts that buffer event streams.
+      // Verify the authenticated room before announcing a successful connection.
+      await this._exchange(session);
       if (generation !== this._generation) { void this._notifyLeave(session); return null; }
-      if (!response.ok || !response.body || !response.headers.get('content-type')?.startsWith('text/event-stream')) throw new Error('The room connection could not open. Please join again.');
       this.status = 'connected'; this._changed();
-      session.updateTimer = setInterval(() => { void this._sendState(session); }, this.updateMs);
+      session.updateTimer = setInterval(() => { void this._sync(session); }, this.updateMs);
       session.pingTimer = setInterval(() => { void this._ping(session); }, this.heartbeatMs);
       session.watchdog = setInterval(() => { if (Date.now() - session.lastMessage > 60000) this._failed(session, new Error('The room connection was lost. Please join again.')); }, 10000);
       session.updateTimer.unref?.(); session.pingTimer.unref?.(); session.watchdog.unref?.();
-      void this._readEvents(session, response.body);
-      void this._sendState(session);
       return session.code;
     } catch (err) {
       if (generation !== this._generation) return null;
@@ -82,29 +78,17 @@ export class Multiplayer {
     }
   }
 
-  async _readEvents(session, body) {
-    const reader = body.getReader(), decoder = new TextDecoder(); let buffer = '';
-    try {
-      while (this._session === session) {
-        const { value, done } = await reader.read();
-        if (this._session !== session) return;
-        if (done) throw new Error('The room closed or the connection was lost. Please join again.');
-        session.lastMessage = Date.now(); buffer += decoder.decode(value, { stream: true }).replace(/\r/g, '');
-        if (buffer.length > 65536) throw new Error('The room sent an invalid update.');
-        let boundary;
-        while ((boundary = buffer.indexOf('\n\n')) !== -1) {
-          const block = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
-          if (!block.startsWith('event: peers\n')) continue;
-          const data = JSON.parse(block.split('\n').find(line => line.startsWith('data: '))?.slice(6) || '{}');
-          if (!Array.isArray(data.players)) throw new Error('The room sent an invalid player list.');
-          const count = this.peers.length;
-          this.peers = data.players.filter(player => player.id !== session.playerId);
-          this.onPeers(this.peers);
-          if (count !== this.peers.length) this._changed();
-        }
-      }
-    } catch (err) { if (this._session === session) this._failed(session, err); }
-    finally { try { await reader.cancel(); } catch { /* Fetch may have already aborted. */ } reader.releaseLock(); }
+  async _exchange(session) {
+    const serialized = this._serialized;
+    const body = this._latest && session.sent !== serialized ? { snapshot: this._latest } : {};
+    const data = await this._json(`/api/rooms/${session.code}/sync`, { token: session.token, body, signal: session.controller.signal });
+    if (this._session !== session) return;
+    if (!Array.isArray(data.players) || !data.players.every(player => player && typeof player.id === 'string') || !data.players.some(player => player.id === session.playerId)) throw new Error('The room sent an invalid player list.');
+    session.lastMessage = Date.now(); session.sent = serialized;
+    const count = this.peers.length;
+    this.peers = data.players.filter(player => player.id !== session.playerId);
+    this.onPeers(this.peers);
+    if (count !== this.peers.length) this._changed();
   }
 
   update(snapshot) {
@@ -112,10 +96,11 @@ export class Multiplayer {
     this._serialized = JSON.stringify(this._latest);
   }
 
-  async _sendState(session) {
-    if (this._session !== session || this.status !== 'connected' || session.sending || !this._latest || session.sent === this._serialized) return;
-    session.sending = true; session.sent = this._serialized;
-    try { await this._json(`/api/rooms/${session.code}/state`, { token: session.token, body: { snapshot: this._latest }, signal: session.controller.signal }); }
+  async _sync(session) {
+    if (this._session !== session || this.status !== 'connected' || session.sending) return;
+    // One request at a time, combining pose updates and reception even when idle.
+    session.sending = true;
+    try { await this._exchange(session); }
     catch (err) {
       if (err.status === 429) session.sent = '';
       else if (this._session === session) this._failed(session, new Error(`Multiplayer disconnected: ${err.message}`));

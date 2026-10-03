@@ -1,4 +1,5 @@
 import { FINANCE_MISSIONS } from './finance-missions.js';
+import { locale } from './i18n.js';
 
 export const SAVE_KEY = 'money-money-lhamas-v1';
 export const EXTRA_COSTUMES = ['Superman', 'Charlotte Katakuri', 'Skeleton', 'Dragon', 'Cyborg', 'Human', 'Zombie'];
@@ -18,7 +19,7 @@ export const STOCKS = [
 ];
 export const CHAPTERS = ['Little beginnings', 'A place of your own', 'The glow-up', 'Millionaire moves', 'Over the Moon'];
 const round = n => Math.round(n * 100) / 100;
-export const money = (n, compact = false) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0, ...(compact ? { notation: 'compact', maximumFractionDigits: 1 } : {}) }).format(n);
+export const money = (n, compact = false) => new Intl.NumberFormat(locale(), { style: 'currency', currency: 'USD', maximumFractionDigits: 0, ...(compact ? { notation: 'compact', maximumFractionDigits: 1 } : {}) }).format(n);
 export const initialState = () => ({
   version: 1, started: false, character: 'anna', wallet: 0, savings: 0, earned: 0, spent: 0,
   interest: 0, shifts: {}, stage: 'beginning', location: 'city', costume: 'Street dreamer', costumes: ['Street dreamer', ...EXTRA_COSTUMES],

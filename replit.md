@@ -25,10 +25,13 @@ If an existing publication uses **Static**, manually change it to **Reserved VM*
 
 See Replit's [deployment types](https://docs.replit.com/features/publishing/deployment-types) and [app configuration](https://docs.replit.com/features/project-setup/configuration).
 
+`VITE ... ready` is the expected Run/Preview log. Production started with `npm run serve` logs `Money Money Lhamas is running on port 5000` (or `PORT`). Updating workspace files alone does not update a published domain; republish the new build.
+
 ## Multiplayer behavior
 
 - Players create or join rooms using a six-character code or the shared room link, with at most eight players per room.
 - All participants must use the same running installation. Development, preview and production processes have separate rooms.
+- The client uses authenticated `POST /api/rooms/:code/sync` requests with complete JSON responses, combining optional pose updates with the current player list. It does not wait for a persistent SSE stream, avoiding streaming-buffer timeouts in hosting proxies. One request is in flight at a time, at most ten sync requests per second; connections are confirmed only after the first valid authenticated sync.
 - The room shares player presence, position, costume, vehicle, flying and dancing. Players are rendered together when they are in the same location, city or Moon.
 - Money, missions, story progress, NPCs and activities remain local to each browser. There is no chat.
 - Rooms are temporary. A server restart or redeployment discards them while browser saves remain intact.
@@ -36,7 +39,9 @@ See Replit's [deployment types](https://docs.replit.com/features/publishing/depl
 
 ## Game features and controls
 
-The game UI is in English. Keep new player-facing text consistent with that language.
+Players can select **Português** or **English** on the start screen or in the in-game menu. On the first visit, a Portuguese browser language selects Portuguese; other browser languages select English. A saved choice takes priority on later visits. Menus, instructions, missions, minigames, messages and signs throughout the city and Moon use the selected language. Keep new player-facing text available in both languages.
+
+Language changes apply immediately without restarting the game or disconnecting multiplayer. Each player chooses independently. The preference is stored under `money-money-lhamas-language-v1` in browser localStorage, separately from the game save and other settings; selection still works for the current session if storage is unavailable. Money remains **USD**, preserving all prices and balances; Portuguese does not convert dollars into Brazilian reais.
 
 The city has a radius of 98 units, additional neighborhoods, a beach, marina and adult cartoon human NPCs. Players can drive three city cars and their purchased car, pilot a boat or yacht, and launch from three glider stations. Leaving a boat returns it and its rider to the dock. Free skins include Superman, Charlotte Katakuri, Skeleton, Dragon, Cyborg, Human and Zombie. Superman, Cyborg and Dragon fly; Cyborg fires harmless milk projectiles. Skills have both keyboard controls and on-screen buttons: F to fly/land, B to dance, Q to shoot milk. E/Action enters and exits vehicles; normal movement controls steer them.
 
@@ -44,6 +49,8 @@ Once free play is unlocked, the menu and travel portals allow return trips betwe
 
 ## Code and checks
 
+- `src/i18n.js`: active language, browser/stored preference and presentation translations. Keep internal game IDs, save data and multiplayer messages language-independent.
+- `src/world-localization.js`: translations of signs, locations, vehicle prompts and adventure notices. `World.refreshLanguage()` updates labels and sign textures without rebuilding the scene, moving the player or resetting the active vehicle.
 - `src/world-expansion.js`: new city areas, marina, NPC placement, vehicles, portals and world boundaries.
 - `src/avatars.js`: procedural skins and adult human NPC models.
 - `src/finance-missions.js`: finance questions and explanations.

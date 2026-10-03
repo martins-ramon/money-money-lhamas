@@ -200,6 +200,10 @@ body:not(.touch-device) .touch { display: none; }
 .room-code { font: 900 clamp(30px, 8vw, 50px) var(--font-display); letter-spacing: .18em; text-align: center; background: var(--lilac); border-radius: 16px; padding: 18px; }
 .field { display: grid; gap: 7px; font-weight: 700; }
 .field input { border: 2px solid var(--ink); border-radius: 12px; padding: 12px; font: inherit; width: 100%; background: white; }
+.language-picker { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 14px; font-weight: 700; }
+.language-picker select { min-height: 44px; padding: 8px 32px 8px 12px; border: 2px solid var(--ink); border-radius: 12px; background: var(--paper); color: var(--ink); font: inherit; cursor: pointer; }
+.title .language-picker { align-self: center; width: min(100%, 280px); padding: 7px 10px; border: 1px solid #e9d3a580; border-radius: 16px; background: #fffaf011; color: var(--paper); }
+.language-picker select:focus-visible { outline: 3px solid var(--sky); outline-offset: 3px; }
 [data-room-input] { text-transform: uppercase; letter-spacing: .12em; }
 [data-room-roster]:empty { display: none; }
 [data-room-roster] { margin: 0; padding-left: 22px; line-height: 1.7; }

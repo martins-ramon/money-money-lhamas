@@ -1,5 +1,6 @@
 import { icon } from './icons.js';
 import { activity } from './experience.js';
+import { t as tr, nameLabel, locale } from './i18n.js';
 
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const shuffle = arr => arr.map(v => [Math.random(), v]).sort((a, b) => a[0] - b[0]).map(v => v[1]);
@@ -10,11 +11,11 @@ function frame(root, job, total, session) {
   el.innerHTML = `
     <div class="card game">
       <div class="game-head">
-        <div><span class="tag">${icon(job.icon, 14)} ${job.role}</span><h2 style="margin-top:6px">${job.task}</h2></div>
-        <button class="btn icon ghost" data-quit aria-label="Quit shift">${icon('close')}</button>
+        <div><span class="tag">${icon(job.icon, 14)} ${nameLabel(job.role)}</span><h2 style="margin-top:6px">${nameLabel(job.task)}</h2></div>
+        <button class="btn icon ghost" data-quit aria-label="${tr('Quit shift', 'Sair do trabalho')}">${icon('close')}</button>
       </div>
       <p class="muted" data-hint></p>
-      <div class="minigame-counter"><span data-counter>0 / ${total} complete</span><b>${job.pay ? `$${job.pay} payday` : ""}</b></div>
+      <div class="minigame-counter"><span data-counter>${tr(`0 / ${total} complete`, `0 / ${total} concluídos`)}</span><b>${job.pay ? tr(`$${job.pay} payday`, `$${job.pay} de salário`) : ""}</b></div>
       <div class="progress"><i data-bar style="width:0%"></i></div>
       <div data-body class="stack"></div>
     </div>`;
@@ -31,7 +32,7 @@ function frame(root, job, total, session) {
   return {
     body: el.querySelector('[data-body]'), hint: el.querySelector('[data-hint]'),
     wait: session.wait, until: session.until,
-    step() { done = Math.min(total, done + 1); el.querySelector('[data-counter]').textContent = `${done} / ${total} complete`; el.querySelector('[data-bar]').style.width = `${Math.round((done / total) * 100)}%`; session.feedback('coin'); return done >= total; },
+    step() { done = Math.min(total, done + 1); el.querySelector('[data-counter]').textContent = tr(`${done} / ${total} complete`, `${done} / ${total} concluídos`); el.querySelector('[data-bar]').style.width = `${Math.round((done / total) * 100)}%`; session.feedback('coin'); return done >= total; },
     cheer(text) { const t = document.createElement('div'); t.className = 'toast'; t.style.cssText = 'position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:2'; t.textContent = text; el.appendChild(t); setTimeout(() => t.remove(), 1500); },
   };
 }
@@ -54,11 +55,11 @@ async function burger(root, job, session) {
   for (let n = 0; n < 5; n++) {
     const order = ['🍞', ...shuffle(fillings).slice(0, 2 + Math.min(n, 2)), '🍞'];
     let i = 0;
-    ui.hint.textContent = `Order #${n + 1}: tap the ingredients in the same order as the recipe card.`;
+    ui.hint.textContent = tr(`Order #${n + 1}: tap the ingredients in the same order as the recipe card.`, `Pedido nº ${n + 1}: toque nos ingredientes na mesma ordem da receita.`);
     ui.body.innerHTML = `<div class="order">${order.map(o => `<span>${o}</span>`).join('')}</div><div class="ingredients">${shuffle(['🍞', ...fillings]).map(f => `<button class="ingredient" data-f="${f}">${f}</button>`).join('')}</div>`;
     await ui.until(next => {
       ui.body.querySelectorAll('.ingredient').forEach(b => (b.onclick = () => {
-        if (b.dataset.f === order[i]) { ui.body.querySelectorAll('.order span')[i].classList.add('done'); i++; if (i === order.length) { ui.cheer('Perfect burger! 🍔'); next(); } }
+        if (b.dataset.f === order[i]) { ui.body.querySelectorAll('.order span')[i].classList.add('done'); i++; if (i === order.length) { ui.cheer(tr('Perfect burger! 🍔', 'Hambúrguer perfeito! 🍔')); next(); } }
         else { b.classList.add('wrong'); b.animate([{ transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: 250 }); }
       }));
     });
@@ -69,7 +70,7 @@ async function burger(root, job, session) {
 
 async function school(root, job, session) {
   const ui = frame(root, job, 8, session);
-  ui.hint.textContent = 'Muddy hoofprints everywhere! Tap each spot to mop it clean.';
+  ui.hint.textContent = tr('Muddy hoofprints everywhere! Tap each spot to mop it clean.', 'Pegadas de lama por toda parte! Toque em cada mancha para limpar.');
   ui.body.innerHTML = '<div class="game-stage" data-stage></div>';
   const stage = ui.body.querySelector('[data-stage]');
   let spawned = 0;
@@ -83,19 +84,19 @@ async function school(root, job, session) {
     };
     spawn(); spawn();
   });
-  ui.cheer('Sparkling clean! 🧽'); await ui.wait(700);
+  ui.cheer(tr('Sparkling clean! 🧽', 'Tudo brilhando de limpo! 🧽')); await ui.wait(700);
 }
 
 async function cinema(root, job, session) {
   const ui = frame(root, job, 6, session);
-  const movies = [['Llama Wars', '🌌'], ['The Hoof-father', '🎩'], ['Alpaca-lypse', '🔥'], ['Finding Llamo', '🐟'], ['Fast & Fluffy', '🏎️']];
+  const movies = [[tr('Llama Wars', 'Guerra nas Lhamas'), '🌌'], [tr('The Hoof-father', 'O Poderoso Cascão'), '🎩'], [tr('Alpaca-lypse', 'Alpacalipse'), '🔥'], [tr('Finding Llamo', 'Procurando Lhamo'), '🐟'], [tr('Fast & Fluffy', 'Velozes e Fofinhos'), '🏎️']];
   for (let n = 0; n < 6; n++) {
     const halls = shuffle(movies).slice(0, 3); const target = pick(halls);
-    ui.hint.textContent = 'Read the ticket and send the guest to the matching hall.';
-    ui.body.innerHTML = `<div class="ticket">🎟️ ADMIT ONE · ${target[0]} · Seat ${Math.floor(Math.random() * 20) + 1}${pick('ABCDEF')}</div><div class="doors">${halls.map((h, i) => `<button class="door" data-i="${i}"><span style="font-size:32px">${h[1]}</span>Hall ${i + 1}<small>${h[0]}</small></button>`).join('')}</div>`;
+    ui.hint.textContent = tr('Read the ticket and send the guest to the matching hall.', 'Leia o ingresso e encaminhe o visitante para a sala correta.');
+    ui.body.innerHTML = `<div class="ticket">🎟️ ${tr('ADMIT ONE', 'INGRESSO INDIVIDUAL')} · ${target[0]} · ${tr('Seat', 'Assento')} ${Math.floor(Math.random() * 20) + 1}${pick('ABCDEF')}</div><div class="doors">${halls.map((h, i) => `<button class="door" data-i="${i}"><span style="font-size:32px">${h[1]}</span>${tr('Hall', 'Sala')} ${i + 1}<small>${h[0]}</small></button>`).join('')}</div>`;
     await ui.until(next => {
       ui.body.querySelectorAll('.door').forEach(d => (d.onclick = () => {
-        if (halls[d.dataset.i] === target) { ui.body.querySelectorAll('button').forEach(b => { b.disabled = true; }); d.classList.add('right'); ui.cheer('Enjoy the show! 🍿'); ui.wait(400).then(next).catch(() => {}); }
+        if (halls[d.dataset.i] === target) { ui.body.querySelectorAll('button').forEach(b => { b.disabled = true; }); d.classList.add('right'); ui.cheer(tr('Enjoy the show! 🍿', 'Bom filme! 🍿')); ui.wait(400).then(next).catch(() => {}); }
         else { d.classList.add('wrong'); setTimeout(() => d.classList.remove('wrong'), 350); }
       }));
     });
@@ -108,11 +109,11 @@ async function factory(root, job, session) {
   const ui = frame(root, job, 8, session);
   for (let n = 0; n < 8; n++) {
     const dirty = Math.random() < 0.5;
-    ui.hint.textContent = 'Inspect each diaper: clean ones go to the shelf, dirty ones go to the laundry.';
-    ui.body.innerHTML = `<div class="diaper">${dirty ? '🩲💩' : '🩲✨'}</div><div class="row" style="justify-content:center"><button class="btn sage" data-c="clean">🧺 Clean shelf</button><button class="btn peach" data-c="dirty">🫧 Laundry</button></div>`;
+    ui.hint.textContent = tr('Inspect each diaper: clean ones go to the shelf, dirty ones go to the laundry.', 'Examine cada fralda: as limpas vão para a prateleira, as sujas vão para a lavanderia.');
+    ui.body.innerHTML = `<div class="diaper">${dirty ? '🩲💩' : '🩲✨'}</div><div class="row" style="justify-content:center"><button class="btn sage" data-c="clean">🧺 ${tr('Clean shelf', 'Prateleira de limpas')}</button><button class="btn peach" data-c="dirty">🫧 ${tr('Laundry', 'Lavanderia')}</button></div>`;
     await ui.until(next => {
       ui.body.querySelectorAll('[data-c]').forEach(b => (b.onclick = () => {
-        if ((b.dataset.c === 'dirty') === dirty) { ui.cheer(dirty ? 'Phew! Sorted. 🤢' : 'Fresh and clean!'); next(); }
+        if ((b.dataset.c === 'dirty') === dirty) { ui.cheer(dirty ? tr('Phew! Sorted. 🤢', 'Ufa! Separada. 🤢') : tr('Fresh and clean!', 'Limpinha e cheirosa!')); next(); }
         else { b.animate([{ transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: 250 }); }
       }));
     });
@@ -126,11 +127,11 @@ async function hotel(root, job, session) {
   const guests = ['🦙', '🐐', '🐑', '🦒', '🐴', '🦌'];
   for (let n = 0; n < 6; n++) {
     const rooms = shuffle(Array.from({ length: 4 }, (_, i) => `${pick([1, 2, 3, 4])}0${i + 1}`)); const target = pick(rooms);
-    ui.hint.textContent = 'Listen to the guest and hand over the right room key.';
-    ui.body.innerHTML = `<div class="speech">${guests[n]} “Good evening! I’m in room <b>${target}</b>, may I have my key please?”</div><div class="doors" style="margin-top:14px">${rooms.map(r => `<button class="door" data-r="${r}">🔑<small>Room ${r}</small></button>`).join('')}</div>`;
+    ui.hint.textContent = tr('Listen to the guest and hand over the right room key.', 'Escute o hóspede e entregue a chave do quarto certo.');
+    ui.body.innerHTML = `<div class="speech">${guests[n]} “${tr(`Good evening! I’m in room <b>${target}</b>, may I have my key please?`, `Boa noite! Estou no quarto <b>${target}</b>. Pode me dar minha chave, por favor?`)}”</div><div class="doors" style="margin-top:14px">${rooms.map(r => `<button class="door" data-r="${r}">🔑<small>${tr('Room', 'Quarto')} ${r}</small></button>`).join('')}</div>`;
     await ui.until(next => {
       ui.body.querySelectorAll('.door').forEach(d => (d.onclick = () => {
-        if (d.dataset.r === target) { ui.body.querySelectorAll('button').forEach(b => { b.disabled = true; }); d.classList.add('right'); ui.cheer('Five-star service! ⭐'); ui.wait(400).then(next).catch(() => {}); }
+        if (d.dataset.r === target) { ui.body.querySelectorAll('button').forEach(b => { b.disabled = true; }); d.classList.add('right'); ui.cheer(tr('Five-star service! ⭐', 'Atendimento cinco estrelas! ⭐')); ui.wait(400).then(next).catch(() => {}); }
         else { d.classList.add('wrong'); setTimeout(() => d.classList.remove('wrong'), 350); }
       }));
     });
@@ -144,7 +145,7 @@ async function police(root, job, session) {
   const arrows = ['⬆️', '⬇️', '⬅️', '➡️'];
   for (let n = 0; n < 5; n++) {
     const route = Array.from({ length: 3 + Math.min(n, 2) }, () => pick(arrows));
-    ui.hint.textContent = 'Memorize the route, then repeat it with the arrow keys or buttons.';
+    ui.hint.textContent = tr('Memorize the route, then repeat it with the arrow keys or buttons.', 'Memorize o caminho e depois repita usando as setas do teclado ou os botões.');
     ui.body.innerHTML = `<div class="route" data-route></div><div class="arrow-grid"><span></span><button class="btn sky" data-a="⬆️">⬆️</button><span></span><button class="btn sky" data-a="⬅️">⬅️</button><button class="btn sky" data-a="⬇️">⬇️</button><button class="btn sky" data-a="➡️">➡️</button></div>`;
     const routeEl = ui.body.querySelector('[data-route]'); const buttons = [...ui.body.querySelectorAll('[data-a]')];
     buttons.forEach(b => (b.disabled = true));
@@ -153,7 +154,7 @@ async function police(root, job, session) {
     let i = 0;
     await ui.until(next => {
       buttons.forEach(b => (b.onclick = () => {
-        if (b.dataset.a === route[i]) { i++; routeEl.textContent = route.slice(0, i).join('') + '❓'.repeat(route.length - i); if (i === route.length) { ui.cheer('Patrol complete! 🚔'); next(); } }
+        if (b.dataset.a === route[i]) { i++; routeEl.textContent = route.slice(0, i).join('') + '❓'.repeat(route.length - i); if (i === route.length) { ui.cheer(tr('Patrol complete! 🚔', 'Patrulha concluída! 🚔')); next(); } }
         else { i = 0; routeEl.textContent = '❓'.repeat(route.length); b.animate([{ transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: 250 }); }
       }));
     });
@@ -170,13 +171,13 @@ export function defendMansion(root, seconds = 240, feedback = () => {}) {
     el.innerHTML = `
       <div class="card game">
         <div class="game-head">
-          <div><span class="tag">🏏 Protect the mansion!</span><h2 style="margin-top:6px">Thieves incoming!</h2></div>
-          <div class="row"><button class="btn small ghost" data-pause>Pause</button><div class="money" style="font-size:26px" data-clock>${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}</div></div>
+          <div><span class="tag">🏏 ${tr('Protect the mansion!', 'Proteja a mansão!')}</span><h2 style="margin-top:6px">${tr('Thieves incoming!', 'Ladrões se aproximando!')}</h2></div>
+          <div class="row"><button class="btn small ghost" data-pause>${tr('Pause', 'Pausar')}</button><div class="money" style="font-size:26px" data-clock>${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}</div></div>
         </div>
-        <p class="muted">Tap the thieves before they reach the door, or press Space to hit the closest one (one swing every 0.35s). Each intruder steals $25,000.</p>
-        <div class="minigame-counter"><span data-wave>Wave 1 / 4 · Warm-up</span><b data-streak>Best streak: 0</b></div>
+        <p class="muted">${tr('Tap the thieves before they reach the door, or press Space to hit the closest one (one swing every 0.35s). Each intruder steals $25,000.', 'Toque nos ladrões antes que alcancem a porta ou pressione Espaço para acertar o mais próximo (uma rebatida a cada 0,35 s). Cada invasor rouba $25.000.')}</p>
+        <div class="minigame-counter"><span data-wave>${tr('Wave 1 / 4 · Warm-up', 'Onda 1 / 4 · Aquecimento')}</span><b data-streak>${tr('Best streak: 0', 'Melhor sequência: 0')}</b></div>
         <div class="timer-bar"><i data-bar style="width:100%"></i></div>
-        <div class="row" style="justify-content:space-between"><span>Bonks: <b data-hits>0</b></span><span>Stolen: <b data-stolen class="neg">$0</b></span></div>
+        <div class="row" style="justify-content:space-between"><span>${tr('Bonks', 'Rebatidas')}: <b data-hits>0</b></span><span>${tr('Stolen', 'Roubado')}: <b data-stolen class="neg">$0</b></span></div>
         <div class="game-stage" data-stage style="background:#1c2140"><div class="mansion-door">🏰</div></div>
       </div>`;
     root.appendChild(el);
@@ -185,9 +186,9 @@ export function defendMansion(root, seconds = 240, feedback = () => {}) {
     const clock = el.querySelector('[data-clock]'), bar = el.querySelector('[data-bar]');
     const pauseButton = el.querySelector('[data-pause]');
     const setPaused = value => {
-      paused = value; el.classList.toggle('defense-paused', paused); pauseButton.textContent = paused ? 'Resume' : 'Pause';
+      paused = value; el.classList.toggle('defense-paused', paused); pauseButton.textContent = paused ? tr('Resume', 'Continuar') : tr('Pause', 'Pausar');
       stage.querySelector('.pause-note')?.remove();
-      if (paused) { const note = document.createElement('div'); note.className = 'pause-note'; note.textContent = 'Take a breather. 🦙'; stage.append(note); }
+      if (paused) { const note = document.createElement('div'); note.className = 'pause-note'; note.textContent = tr('Take a breather. 🦙', 'Faça uma pausa. 🦙'); stage.append(note); }
     };
     pauseButton.onclick = () => setPaused(!paused);
     const onVis = () => { if (document.hidden) setPaused(true); };
@@ -196,19 +197,19 @@ export function defendMansion(root, seconds = 240, feedback = () => {}) {
       if (paused) return;
       left--; clock.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`; bar.style.width = `${(left / seconds) * 100}%`;
       const wave = Math.min(4, Math.floor((seconds - left) / (seconds / 4)) + 1);
-      el.querySelector('[data-wave]').textContent = `Wave ${wave} / 4 · ${['Warm-up', 'Getting busy', 'Hold the line', 'The final stand'][wave - 1]}`;
+      el.querySelector('[data-wave]').textContent = `${tr('Wave', 'Onda')} ${wave} / 4 · ${[tr('Warm-up', 'Aquecimento'), tr('Getting busy', 'A pressão aumenta'), tr('Hold the line', 'Segure firme'), tr('The final stand', 'A defesa final')][wave - 1]}`;
       if (left <= 0) finish();
     }, 1000);
     const thieves = new Set();
     const spawn = () => {
       if (!running || paused) return;
-      const t = document.createElement('button'); t.className = 'thief'; t.textContent = pick(['🥷', '🦝', '🐺']); t.setAttribute('aria-label', 'Bonk thief');
+      const t = document.createElement('button'); t.className = 'thief'; t.textContent = pick(['🥷', '🦝', '🐺']); t.setAttribute('aria-label', tr('Bonk thief', 'Rebater ladrão'));
       const side = Math.floor(Math.random() * 4); const w = stage.clientWidth, h = stage.clientHeight;
       let x = side === 0 ? -60 : side === 1 ? w : Math.random() * w, y = side === 2 ? -80 : side === 3 ? h : Math.random() * h;
       const speed = 22 + Math.random() * 18 + (seconds - left) * 0.12;
       t.style.transform = `translate(${x}px, ${y}px)`; stage.appendChild(t);
       const rec = { t, x, y, speed, alive: true }; thieves.add(rec);
-      const bonk = () => { if (!rec.alive || paused || performance.now() - lastSwing < 350) return; lastSwing = performance.now(); rec.alive = false; t.disabled = true; t.classList.add('hit'); t.textContent = '💫'; hits++; streak++; bestStreak = Math.max(bestStreak, streak); el.querySelector('[data-streak]').textContent = `Best streak: ${bestStreak}`; feedback('bonk'); el.querySelector('[data-hits]').textContent = hits; setTimeout(() => { t.remove(); thieves.delete(rec); }, 350); };
+      const bonk = () => { if (!rec.alive || paused || performance.now() - lastSwing < 350) return; lastSwing = performance.now(); rec.alive = false; t.disabled = true; t.classList.add('hit'); t.textContent = '💫'; hits++; streak++; bestStreak = Math.max(bestStreak, streak); el.querySelector('[data-streak]').textContent = tr(`Best streak: ${bestStreak}`, `Melhor sequência: ${bestStreak}`); feedback('bonk'); el.querySelector('[data-hits]').textContent = hits; setTimeout(() => { t.remove(); thieves.delete(rec); }, 350); };
       rec.bonk = bonk;
       t.addEventListener('pointerdown', bonk);
       t.addEventListener('click', bonk);
@@ -224,7 +225,7 @@ export function defendMansion(root, seconds = 240, feedback = () => {}) {
         for (const r of thieves) {
           if (!r.alive) continue;
           const dx = cx - r.x, dy = cy - r.y, d = Math.hypot(dx, dy);
-          if (d < 30) { r.alive = false; streak = 0; stolen += 25000; feedback('bad'); el.querySelector('[data-stolen]').textContent = `$${stolen.toLocaleString('en-US')}`; r.t.textContent = '💰'; r.t.style.opacity = 0.3; setTimeout(() => { r.t.remove(); thieves.delete(r); }, 400); continue; }
+          if (d < 30) { r.alive = false; streak = 0; stolen += 25000; feedback('bad'); el.querySelector('[data-stolen]').textContent = `$${stolen.toLocaleString(locale())}`; r.t.textContent = '💰'; r.t.style.opacity = 0.3; setTimeout(() => { r.t.remove(); thieves.delete(r); }, 400); continue; }
           r.x += (dx / d) * r.speed * dt; r.y += (dy / d) * r.speed * dt; r.t.style.transform = `translate(${r.x}px, ${r.y}px)`;
         }
       }
@@ -247,20 +248,20 @@ export function defendMansion(root, seconds = 240, feedback = () => {}) {
 }
 
 /* ---------- Financial-math homework quiz (Helper mission) ---------- */
-const money = n => { const v = Math.round(n * 100) / 100; return `$${v.toLocaleString('en-US', Number.isInteger(v) ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
+const money = n => { const v = Math.round(n * 100) / 100; return `$${v.toLocaleString(locale(), Number.isInteger(v) ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
 const ri = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
 /** Each generator returns { q, answer, options, explain } with numeric options (answer included). */
 const QUESTIONS = [
-  () => { const P = ri(3, 12) * 100, r = pick([2, 3, 5]); const a = P * r / 100; return { q: `You keep ${money(P)} in the Piggy Bank at ${r}% interest per shift. How much interest do you earn after one shift?`, answer: a, options: [a, a * 2, a / 2, a + 10], explain: `Interest = ${money(P)} × ${r}/100 = ${money(a)}.` }; },
-  () => { const P = ri(4, 10) * 100; const a = P * 1.02 * 1.02; return { q: `${money(P)} in the Piggy Bank at 2% per shift. How much do you have after two shifts (compound interest)?`, answer: a, options: [a, P * 1.04, P * 1.02, P * 1.05], explain: `${money(P)} × 1.02 × 1.02 = ${money(a)} — the second shift also pays interest on the first interest!` }; },
-  () => { const pay = pick([400, 900]), pct = pick([10, 25, 30, 50]); const a = pay - pay * pct / 100; return { q: `You earn ${money(pay)} and spend ${pct}% on food and clothes. How much is left to save?`, answer: a, options: [a, pay * pct / 100, pay - pct, pay], explain: `${money(pay)} − ${pct}% of ${money(pay)} (${money(pay * pct / 100)}) = ${money(a)}.` }; },
-  () => { const have = ri(0, 5) * 100, goal = 1000; const a = Math.ceil((goal - have) / 400); return { q: `You have ${money(have)} and want ${money(goal)} for your first car. Each shift pays $400. How many shifts do you still need?`, answer: a, options: [a, a + 1, Math.max(1, a - 1), a + 2], explain: `(${money(goal)} − ${money(have)}) ÷ $400 = ${((goal - have) / 400).toFixed(2)}, rounded up to ${a} shifts.`, fmt: n => `${n} shift${n === 1 ? '' : 's'}` }; },
-  () => { const w = ri(1, 9) * 100, sv = ri(1, 9) * 100, sh = ri(2, 6), pr = ri(1, 5) * 50; const a = w + sv + sh * pr; return { q: `Wallet ${money(w)}, savings ${money(sv)} and ${sh} shares worth ${money(pr)} each. What is your net worth?`, answer: a, options: [a, w + sv, w + sv + pr, a + pr], explain: `Net worth = ${money(w)} + ${money(sv)} + ${sh} × ${money(pr)} = ${money(a)}.` }; },
-  () => { const esc = ri(1, 4), caught = ri(1, 3); const a = esc * 500 - caught * 200; return { q: `Mr. Barriga charged you rent ($200) ${caught} time${caught > 1 ? 's' : ''} and you escaped him ${esc} time${esc > 1 ? 's' : ''} (+$500 each). What is your net result?`, answer: a, options: [a, esc * 500, esc * 500 + caught * 200, a - 200], explain: `${esc} × $500 − ${caught} × $200 = ${money(a)}.` }; },
-  () => { const cost = pick([350000, 910000]), gain = pick([50000, 70000, 91000]); const a = Math.ceil(cost / gain); return { q: `An upgrade costs ${money(cost)} and adds ${money(gain)} of income per tick. After how many ticks does it pay for itself?`, answer: a, options: [a, a + 2, Math.max(1, a - 2), a * 2], explain: `Payback = ${money(cost)} ÷ ${money(gain)} ≈ ${(cost / gain).toFixed(1)} → ${a} ticks.`, fmt: n => `${n} tick${n === 1 ? '' : 's'}` }; },
-  () => { const price = pick([180, 230, 350]), pct = pick([5, 8, 10]); const a = price * (1 - pct / 100); return { q: `A stock costs ${money(price)} and drops ${pct}%. What is the new price?`, answer: a, options: [a, price * (1 + pct / 100), price - pct, price], explain: `${money(price)} × (1 − ${pct}/100) = ${money(a)}. Stocks can lose value too!` }; },
-  () => { const qty = ri(2, 8), buy = pick([180, 230]), sell = buy + pick([20, 40, 50]); const a = qty * (sell - buy); return { q: `You bought ${qty} shares at ${money(buy)} and sold them at ${money(sell)}. What is your profit?`, answer: a, options: [a, qty * sell, sell - buy, a * 2], explain: `Profit = ${qty} × (${money(sell)} − ${money(buy)}) = ${money(a)}.` }; },
-  () => { const P = ri(2, 8) * 100, years = 2; const a = P * 1.1 ** years; return { q: `${money(P)} grows 10% per year. How much is it worth after ${years} years?`, answer: a, options: [a, P * 1.2, P * 1.1, P * 1.3], explain: `${money(P)} × 1.10² = ${money(a)}. Compound growth beats simple growth.` }; },
+  () => { const P = ri(3, 12) * 100, r = pick([2, 3, 5]); const a = P * r / 100; return { q: tr(`You keep ${money(P)} in the Piggy Bank at ${r}% interest per shift. How much interest do you earn after one shift?`, `Você guarda ${money(P)} no Cofrinho com juros de ${r}% por turno de trabalho. Quanto ganha de juros após um turno?`), answer: a, options: [a, a * 2, a / 2, a + 10], explain: tr(`Interest = ${money(P)} × ${r}/100 = ${money(a)}.`, `Juros = ${money(P)} × ${r}/100 = ${money(a)}.`) }; },
+  () => { const P = ri(4, 10) * 100; const a = P * 1.02 * 1.02; return { q: tr(`${money(P)} in the Piggy Bank at 2% per shift. How much do you have after two shifts (compound interest)?`, `Você tem ${money(P)} no Cofrinho, rendendo 2% por turno. Quanto terá após dois turnos (juros compostos)?`), answer: a, options: [a, P * 1.04, P * 1.02, P * 1.05], explain: tr(`${money(P)} × 1.02 × 1.02 = ${money(a)} — the second shift also pays interest on the first interest!`, `${money(P)} × 1,02 × 1,02 = ${money(a)} — o segundo turno também rende juros sobre os juros do primeiro!`) }; },
+  () => { const pay = pick([400, 900]), pct = pick([10, 25, 30, 50]); const a = pay - pay * pct / 100; return { q: tr(`You earn ${money(pay)} and spend ${pct}% on food and clothes. How much is left to save?`, `Você ganha ${money(pay)} e gasta ${pct}% em comida e roupas. Quanto sobra para guardar?`), answer: a, options: [a, pay * pct / 100, pay - pct, pay], explain: tr(`${money(pay)} − ${pct}% of ${money(pay)} (${money(pay * pct / 100)}) = ${money(a)}.`, `${money(pay)} − ${pct}% de ${money(pay)} (${money(pay * pct / 100)}) = ${money(a)}.`) }; },
+  () => { const have = ri(0, 5) * 100, goal = 1000; const a = Math.ceil((goal - have) / 400); return { q: tr(`You have ${money(have)} and want ${money(goal)} for your first car. Each shift pays $400. How many shifts do you still need?`, `Você tem ${money(have)} e quer juntar ${money(goal)} para seu primeiro carro. Cada turno paga $400. De quantos turnos ainda precisa?`), answer: a, options: [a, a + 1, Math.max(1, a - 1), a + 2], explain: tr(`(${money(goal)} − ${money(have)}) ÷ $400 = ${((goal - have) / 400).toFixed(2)}, rounded up to ${a} shifts.`, `(${money(goal)} − ${money(have)}) ÷ $400 = ${((goal - have) / 400).toLocaleString(locale(), { minimumFractionDigits: 2 })}, arredondando para cima: ${a} turnos.`), fmt: n => tr(`${n} shift${n === 1 ? '' : 's'}`, `${n} turno${n === 1 ? '' : 's'}`) }; },
+  () => { const w = ri(1, 9) * 100, sv = ri(1, 9) * 100, sh = ri(2, 6), pr = ri(1, 5) * 50; const a = w + sv + sh * pr; return { q: tr(`Wallet ${money(w)}, savings ${money(sv)} and ${sh} shares worth ${money(pr)} each. What is your net worth?`, `Você tem ${money(w)} na carteira, ${money(sv)} guardados e ${sh} ações que valem ${money(pr)} cada. Qual é seu patrimônio?`), answer: a, options: [a, w + sv, w + sv + pr, a + pr], explain: tr(`Net worth = ${money(w)} + ${money(sv)} + ${sh} × ${money(pr)} = ${money(a)}.`, `Patrimônio = ${money(w)} + ${money(sv)} + ${sh} × ${money(pr)} = ${money(a)}.`) }; },
+  () => { const esc = ri(1, 4), caught = ri(1, 3); const a = esc * 500 - caught * 200; return { q: tr(`Mr. Barriga charged you rent ($200) ${caught} time${caught > 1 ? 's' : ''} and you escaped him ${esc} time${esc > 1 ? 's' : ''} (+$500 each). What is your net result?`, `O Sr. Barriga cobrou aluguel de $200 de você ${caught} ${caught === 1 ? 'vez' : 'vezes'}, e você escapou dele ${esc} ${esc === 1 ? 'vez' : 'vezes'} (+$500 por fuga). Qual é seu saldo final?`), answer: a, options: [a, esc * 500, esc * 500 + caught * 200, a - 200], explain: `${esc} × $500 − ${caught} × $200 = ${money(a)}.` }; },
+  () => { const cost = pick([350000, 910000]), gain = pick([50000, 70000, 91000]); const a = Math.ceil(cost / gain); return { q: tr(`An upgrade costs ${money(cost)} and adds ${money(gain)} of income per tick. After how many ticks does it pay for itself?`, `Uma melhoria custa ${money(cost)} e aumenta a renda em ${money(gain)} por ciclo. Após quantos ciclos ela se paga?`), answer: a, options: [a, a + 2, Math.max(1, a - 2), a * 2], explain: tr(`Payback = ${money(cost)} ÷ ${money(gain)} ≈ ${(cost / gain).toFixed(1)} → ${a} ticks.`, `Prazo de retorno = ${money(cost)} ÷ ${money(gain)} ≈ ${(cost / gain).toLocaleString(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} → ${a} ciclos.`), fmt: n => tr(`${n} tick${n === 1 ? '' : 's'}`, `${n} ciclo${n === 1 ? '' : 's'}`) }; },
+  () => { const price = pick([180, 230, 350]), pct = pick([5, 8, 10]); const a = price * (1 - pct / 100); return { q: tr(`A stock costs ${money(price)} and drops ${pct}%. What is the new price?`, `Uma ação custa ${money(price)} e cai ${pct}%. Qual é o novo preço?`), answer: a, options: [a, price * (1 + pct / 100), price - pct, price], explain: tr(`${money(price)} × (1 − ${pct}/100) = ${money(a)}. Stocks can lose value too!`, `${money(price)} × (1 − ${pct}/100) = ${money(a)}. Ações também podem perder valor!`) }; },
+  () => { const qty = ri(2, 8), buy = pick([180, 230]), sell = buy + pick([20, 40, 50]); const a = qty * (sell - buy); return { q: tr(`You bought ${qty} shares at ${money(buy)} and sold them at ${money(sell)}. What is your profit?`, `Você comprou ${qty} ações por ${money(buy)} cada e vendeu por ${money(sell)} cada. Qual foi seu lucro?`), answer: a, options: [a, qty * sell, sell - buy, a * 2], explain: tr(`Profit = ${qty} × (${money(sell)} − ${money(buy)}) = ${money(a)}.`, `Lucro = ${qty} × (${money(sell)} − ${money(buy)}) = ${money(a)}.`) }; },
+  () => { const P = ri(2, 8) * 100, years = 2; const a = P * 1.1 ** years; return { q: tr(`${money(P)} grows 10% per year. How much is it worth after ${years} years?`, `${money(P)} rendem 10% por ano. Quanto esse valor será após ${years} anos?`), answer: a, options: [a, P * 1.2, P * 1.1, P * 1.3], explain: tr(`${money(P)} × 1.10² = ${money(a)}. Compound growth beats simple growth.`, `${money(P)} × 1,10² = ${money(a)}. O crescimento com juros compostos supera o de juros simples.`) }; },
 ];
 /** Five random questions; resolves with { passed, correct, total, needed, quit }. */
 export function playQuiz(root, total = 5, needed = 3) {
@@ -270,10 +271,10 @@ export function playQuiz(root, total = 5, needed = 3) {
     el.innerHTML = `
       <div class="card game">
         <div class="game-head">
-          <div><span class="tag">📚 Helper mission</span><h2 style="margin-top:6px">Financial-math homework</h2></div>
-          <button class="btn icon ghost" data-quit aria-label="Quit">${icon('close')}</button>
+          <div><span class="tag">📚 ${tr('Helper mission', 'Missão de ajuda')}</span><h2 style="margin-top:6px">${tr('Financial-math homework', 'Lição de matemática financeira')}</h2></div>
+          <button class="btn icon ghost" data-quit aria-label="${tr('Quit', 'Sair')}">${icon('close')}</button>
         </div>
-        <p class="muted" data-hint>The school kids are stuck. Answer at least ${needed} of ${total} questions to help them (and earn $5,000).</p>
+        <p class="muted" data-hint>${tr(`The school kids are stuck. Answer at least ${needed} of ${total} questions to help them (and earn $5,000).`, `Os alunos estão com dificuldades. Acerte pelo menos ${needed} de ${total} perguntas para ajudá-los (e ganhar $5.000).`)}</p>
         <div class="progress"><i data-bar style="width:0%"></i></div>
         <div data-body class="stack"></div>
       </div>`;
@@ -285,19 +286,19 @@ export function playQuiz(root, total = 5, needed = 3) {
     const ask = () => {
       if (i >= total) {
         const passed = correct >= needed;
-        body.innerHTML = `<div class="big-emoji" style="text-align:center">${passed ? '🎓🦙' : '📖🦙'}</div><h3 style="text-align:center">${passed ? 'Homework done!' : 'Not quite yet…'}</h3><p style="text-align:center">You got <b>${correct}/${total}</b> right.${passed ? ' The kids are ready for their test!' : ` They need at least ${needed} correct answers.`}</p><button class="btn ${passed ? 'sage' : 'peach'}" data-finish>${icon(passed ? 'check' : 'reset')} ${passed ? 'Collect $5,000' : 'Back to town'}</button>`;
+        body.innerHTML = `<div class="big-emoji" style="text-align:center">${passed ? '🎓🦙' : '📖🦙'}</div><h3 style="text-align:center">${passed ? tr('Homework done!', 'Lição concluída!') : tr('Not quite yet…', 'Ainda não foi desta vez…')}</h3><p style="text-align:center">${tr(`You got <b>${correct}/${total}</b> right.`, `Você acertou <b>${correct}/${total}</b>.`)}${passed ? tr(' The kids are ready for their test!', ' Os alunos estão prontos para a prova!') : tr(` They need at least ${needed} correct answers.`, ` Eles precisam de pelo menos ${needed} respostas corretas.`)}</p><button class="btn ${passed ? 'sage' : 'peach'}" data-finish>${icon(passed ? 'check' : 'reset')} ${passed ? tr('Collect $5,000', 'Receber $5.000') : tr('Back to town', 'Voltar à cidade')}</button>`;
         body.querySelector('[data-finish]').onclick = () => resolve({ passed, correct, total, needed, quit: false });
         return;
       }
       const it = picked[i]; const opts = shuffle([...new Set(it.options.map(v => Math.round(v * 100) / 100))]);
-      body.innerHTML = `<div class="ticket" style="font-size:18px">Question ${i + 1} of ${total}: ${it.q}</div><div class="doors" data-opts>${opts.map(v => `<button class="door" data-v="${v}">${(it.fmt || money)(v)}</button>`).join('')}</div><div class="formula hidden" data-explain></div>`;
+      body.innerHTML = `<div class="ticket" style="font-size:18px">${tr(`Question ${i + 1} of ${total}`, `Pergunta ${i + 1} de ${total}`)}: ${it.q}</div><div class="doors" data-opts>${opts.map(v => `<button class="door" data-v="${v}">${(it.fmt || money)(v)}</button>`).join('')}</div><div class="formula hidden" data-explain></div>`;
       body.querySelectorAll('[data-v]').forEach(b => (b.onclick = () => {
         const right = Math.abs(Number(b.dataset.v) - it.answer) < 0.01;
         body.querySelectorAll('[data-v]').forEach(x => { x.disabled = true; if (Math.abs(Number(x.dataset.v) - it.answer) < 0.01) x.classList.add('right'); });
         if (right) correct++; else b.classList.add('wrong');
-        const ex = body.querySelector('[data-explain]'); ex.classList.remove('hidden'); ex.innerHTML = `${right ? '✅ Correct!' : '❌ Not this time.'} 📐 ${it.explain}`;
+        const ex = body.querySelector('[data-explain]'); ex.classList.remove('hidden'); ex.innerHTML = `${right ? tr('✅ Correct!', '✅ Correto!') : tr('❌ Not this time.', '❌ Não foi desta vez.')} 📐 ${it.explain}`;
         i++; bar.style.width = `${Math.round((i / total) * 100)}%`;
-        const next = document.createElement('button'); next.className = 'btn small'; next.innerHTML = `${icon('arrow')} ${i >= total ? 'See result' : 'Next question'}`; next.onclick = ask; body.appendChild(next);
+        const next = document.createElement('button'); next.className = 'btn small'; next.innerHTML = `${icon('arrow')} ${i >= total ? tr('See result', 'Ver resultado') : tr('Next question', 'Próxima pergunta')}`; next.onclick = ask; body.appendChild(next);
       }));
     };
     ask();

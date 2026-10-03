@@ -34,8 +34,10 @@ export function buildCityExpansion(world, { mat, mesh, building, car, tree, sign
   const asphalt = 0x7d7f8c;
   for (const z of [-60, -38, 38, 60]) addPlane(128, 5, asphalt, -4, z);
   for (const x of [-60, -40, 40, 60]) addPlane(5, 144, asphalt, x, 0);
-  addPlane(122, 6, asphalt, -4, 0);
-  addPlane(6, 152, asphalt, 0, 0);
+  // Extend the original 70-unit avenues only beyond the town. Overlaying full
+  // avenues at y=0.04 made them coplanar with the home lot and hid the plaza.
+  for (const [width, x] of [[30, -50], [22, 46]]) addPlane(width, 6, asphalt, x, 0, 0.02);
+  for (const z of [-55.5, 55.5]) addPlane(6, 41, asphalt, 0, z, 0.02);
   const colors = [0xffb37a, 0xc8b4f2, 0xffd94d, 0x8fd4ff, 0xf7f2e4];
   let block = 0;
   for (const z of [-72, -49, 49, 72]) for (const x of [-72, -50, -27, -12, 12, 27, 50]) {

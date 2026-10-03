@@ -125,7 +125,7 @@ export function createRoomService({ maxRooms = 100, maxPlayers = 8, idleMs = 180
         const player = addPlayer(room, name);
         json(res, 201, { code, playerId: player.id, token: player.token }); return;
       }
-      const match = /^\/api\/rooms\/([^/]+)\/(join|events|state|ping|leave)$/.exec(url.pathname);
+      const match = /^\/api\/rooms\/([^/]+)\/(join|events|state|sync|ping|leave)$/.exec(url.pathname);
       if (!match || !CODE_PATTERN.test(match[1])) throw error(404, 'Room not found. Check the six-character code.');
       const [, code, action] = match;
       if (req.method !== (action === 'events' ? 'GET' : 'POST')) throw error(405, 'That request method is not available.');
@@ -151,7 +151,9 @@ export function createRoomService({ maxRooms = 100, maxPlayers = 8, idleMs = 180
       const body = await readBody(req, maxBodyBytes);
       // A disconnect can happen while the request body is still arriving.
       if (!room.players.has(player.id)) throw error(401, 'Your room session ended. Join the room again.');
-      if (action === 'state') { player.snapshot = validateSnapshot(body.snapshot); broadcast(room); }
+      if (action === 'state' || (action === 'sync' && Object.hasOwn(body, 'snapshot'))) { player.snapshot = validateSnapshot(body.snapshot); broadcast(room); }
+      // A finite response avoids streaming-buffer timeouts behind hosting proxies.
+      if (action === 'sync') { json(res, 200, { players: publicPlayers(room) }); return; }
       if (action === 'leave') remove(room, player);
       json(res, 200, { ok: true });
     } catch (err) {

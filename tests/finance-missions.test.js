@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FINANCE_MISSIONS } from '../src/finance-missions.js';
+import { FINANCE_MISSIONS, financeMissions } from '../src/finance-missions.js';
 import { act, initialState, loadGame } from '../src/model.js';
+import { getLanguage, setLanguage, translateError } from '../src/i18n.js';
 
 const started = () => act(initialState(), { type: 'start', character: 'anna' });
 const solve = mission => ({ type: 'financeQuest', id: mission.id, answers: mission.questions.map(q => q.answer) });
@@ -56,4 +57,30 @@ test('finance rewards cannot be claimed without complete valid answers or before
   for (const answers of [undefined, [], [mission.questions[0].answer], [1, 0, 0], ['1', '0'], [-1, 0], [1, 99], [NaN, 0]]) {
     assert.throws(() => act(started(), { type: 'financeQuest', id: mission.id, answers }), /Answer every question/);
   }
+});
+
+test('Portuguese finance missions preserve answers, progression and rewards', t => {
+  const previous = getLanguage(); t.after(() => setLanguage(previous));
+  setLanguage('pt');
+  const localized = financeMissions();
+  assert.equal(localized.length, FINANCE_MISSIONS.length);
+  for (const [index, mission] of localized.entries()) {
+    const original = FINANCE_MISSIONS[index];
+    assert.equal(mission.id, original.id);
+    assert.equal(mission.reward, original.reward);
+    assert.notEqual(mission.title, original.title);
+    assert.notEqual(mission.description, original.description);
+    for (const [questionIndex, question] of mission.questions.entries()) {
+      const source = original.questions[questionIndex];
+      assert.equal(question.answer, source.answer);
+      assert.equal(question.choices.length, source.choices.length);
+      assert.notEqual(question.prompt, source.prompt);
+      assert.notEqual(question.explanation, source.explanation);
+      assert.ok(translateError(`Question ${questionIndex + 1}: ${source.explanation} Try again!`).includes(question.explanation));
+    }
+    assert.deepEqual(act(started(), solve(mission)), act(started(), solve(original)));
+  }
+  setLanguage('en');
+  assert.equal(financeMissions(), FINANCE_MISSIONS);
+  assert.equal(FINANCE_MISSIONS[0].title, 'Plan your pocket money');
 });

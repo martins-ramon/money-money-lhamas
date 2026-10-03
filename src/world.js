@@ -3,6 +3,8 @@ import { movementInput } from './experience.js';
 import { JOBS } from './model.js';
 import { buildAvatar } from './avatars.js';
 import { buildCityExpansion, constrainAdventurePosition, CITY_LIMIT } from './world-expansion.js';
+import { t } from './i18n.js';
+import { worldText, refreshWorldLabel } from './world-localization.js';
 
 const PALETTE = { peach: 0xffb37a, sage: 0x9dd39a, lilac: 0xc8b4f2, sky: 0x8fd4ff, sun: 0xffd94d, coral: 0xff6b6b, ink: 0x2b2a33, cream: 0xf7f2e4, wood: 0xb58a5a, gold: 0xf6b53d, white: 0xfffaf0 };
 const COIN_SPOTS = [[-4, -18], [6, 4], [-18, 2], [22, -4], [3, -26], [-26, -8], [12, 20], [-8, 22], [26, 12], [-24, 16], [0, -6], [18, -12]];
@@ -40,8 +42,19 @@ function textTexture(text, bg = '#fffaf0', fg = '#2b2a33', size = 64) {
   ctx.fillText(text, 256, 68);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
+function updateSign(sign, source = sign.userData.textSource, bg = sign.userData.textBackground) {
+  const text = worldText(source);
+  sign.userData.textSource = source;
+  sign.userData.textBackground = bg;
+  if (sign.userData.renderedText === text && sign.material.map) return;
+  sign.material.map?.dispose();
+  sign.material.map = textTexture(text, bg);
+  sign.material.needsUpdate = true;
+  sign.userData.renderedText = text;
+}
 function sign(text, bg) {
-  const s = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshBasicMaterial({ map: textTexture(text, bg), transparent: true }));
+  const s = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshBasicMaterial({ transparent: true }));
+  updateSign(s, text, bg);
   return s;
 }
 function disposeGroup(group) {
@@ -416,6 +429,13 @@ export class World {
     const stars = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: 900 }, (_, i) => (rnd(i, 11 + (i % 3)) - 0.5) * 240), 3)), new THREE.PointsMaterial({ color: 0xffffff, size: 0.6 })); this.moon.add(stars);
     this.interactables.push({ id: 'moonhouse', type: 'moon', label: 'Sign the Moon deal with Elo Musk', position: new THREE.Vector3(0, 0, -7), radius: 4, location: 'moon' });
     buildCityExpansion(this, { mat, mesh, building, car, tree, sign });
+    this.refreshLanguage();
+  }
+  refreshLanguage() {
+    // Only redraw changed sign textures and labels. Positions, vehicles and story state stay intact.
+    this.scene.traverse(object => { if (object.userData.textSource) updateSign(object); });
+    this.interactables.forEach(refreshWorldLabel);
+    this.vehicles.forEach(refreshWorldLabel);
   }
   #bindInput() {
     window.addEventListener('keydown', e => {
@@ -493,7 +513,7 @@ export class World {
     const costume = this.playerMesh.userData.costume;
     const canFly = ['Superman', 'Cyborg', 'Dragon'].includes(costume);
     const mode = this.vehicle?.type || (this.flying ? 'flight' : this.dancing ? 'dance' : 'walk');
-    return { mode, label: { car: 'Driving', boat: 'Sailing a boat', yacht: 'Sailing a yacht', glider: 'Gliding', flight: 'Flying', dance: 'Dancing', walk: 'Exploring' }[mode], canFly, canShoot: costume === 'Cyborg', dancing: this.dancing, vehicle: this.vehicle?.type || null };
+    return { mode, label: worldText({ car: 'Driving', boat: 'Sailing a boat', yacht: 'Sailing a yacht', glider: 'Gliding', flight: 'Flying', dance: 'Dancing', walk: 'Exploring' }[mode]), canFly, canShoot: costume === 'Cyborg', dancing: this.dancing, vehicle: this.vehicle?.type || null };
   }
   createVehicleMesh(type) {
     const source = [...this.vehicles.values()].find(vehicle => vehicle.type === type);
@@ -510,7 +530,7 @@ export class World {
     this.player.pos.copy(vehicle.mesh.position); this.player.vy = 0; this.player.heading = vehicle.heading;
     if (vehicle.type === 'glider') { this.player.pos.y = 19; this.player.grounded = false; }
     else this.player.grounded = true;
-    this.onNotice(vehicle.type === 'glider' ? 'Glider launched! Use your movement controls to steer. Land automatically.' : `${vehicle.label}. Use your movement controls and Action to exit.`);
+    this.onNotice(vehicle.type === 'glider' ? worldText('Glider launched! Use your movement controls to steer. Land automatically.') : t(`${vehicle.label}. Use your movement controls and Action to exit.`, `${vehicle.label}. Use os controles de movimento e Ação para sair.`));
     return true;
   }
   exitVehicle(notify = true) {
@@ -528,18 +548,18 @@ export class World {
     this.vehicle = null; this.playerMesh.scale.setScalar(1); this.playerMesh.rotation.x = this.playerMesh.rotation.z = 0;
     this.player.vy = Math.min(0, this.player.vy); this.player.grounded = this.player.pos.y <= 0;
     constrainAdventurePosition(this.player.pos, { location: this.location, airborne: this.player.pos.y > 3 }); this.resetInput();
-    if (notify) this.onNotice(sailing ? 'Back at the dock. Your boat is ready for another trip!' : 'You left the vehicle.');
+    if (notify) this.onNotice(worldText(sailing ? 'Back at the dock. Your boat is ready for another trip!' : 'You left the vehicle.'));
     return true;
   }
   toggleFlight() {
     if (this.frozen || this.vehicle) return false;
-    if (!this.getAdventureStatus().canFly) { this.onNotice('Wear Superman, Cyborg or Dragon to fly.'); return false; }
+    if (!this.getAdventureStatus().canFly) { this.onNotice(worldText('Wear Superman, Cyborg or Dragon to fly.')); return false; }
     this.flying = !this.flying; this.dancing = false; this.player.grounded = false; this.player.vy = 0;
-    this.onNotice(this.flying ? 'Flight on! Use your movement controls. Tap Fly again to land.' : 'Landing…'); return true;
+    this.onNotice(worldText(this.flying ? 'Flight on! Use your movement controls. Tap Fly again to land.' : 'Landing…')); return true;
   }
   toggleDance() {
     if (this.frozen || this.vehicle || this.flying || !this.player.grounded) return false;
-    this.dancing = !this.dancing; this.onNotice(this.dancing ? 'Dance time! Move to stop.' : 'Dance stopped.'); return true;
+    this.dancing = !this.dancing; this.onNotice(worldText(this.dancing ? 'Dance time! Move to stop.' : 'Dance stopped.')); return true;
   }
   shootMilk() {
     if (this.frozen || this.vehicle || !this.getAdventureStatus().canShoot || this.time - this.lastMilkShot < 0.28) return false;
@@ -573,16 +593,17 @@ export class World {
     }
     disposeGroup(this.assetGroup);
     this.assetGroup.clear();
-    if (asset) this.plotSign.material.map?.dispose();
     if (asset === 'car') {
       const c = car(new THREE.Color(color), style); c.rotation.y = 0.4; c.position.copy(this.plot.position); this.city.add(c);
       const position = c.position.clone(), id = 'car-owned', label = 'Drive your own car';
       this.vehicles.set(id, { id, type: 'car', mesh: c, spawn: position.clone(), position, heading: 0.4 + Math.PI / 2, label });
       this.interactables.push({ id, type: 'vehicle', vehicleType: 'car', label, position, radius: 3.5, location: 'city' });
-      this.plotSign.material.map = textTexture('MY FIRST CAR', '#fffaf0');
+      refreshWorldLabel(this.vehicles.get(id));
+      refreshWorldLabel(this.interactables.at(-1));
+      updateSign(this.plotSign, 'MY FIRST CAR');
     }
-    else if (asset === 'house') { this.assetGroup.add(house(new THREE.Color(color), style)); this.plotSign.material.map = textTexture('HOME SWEET HOME', '#fffaf0'); }
-    this.plotSign.material.needsUpdate = true;
+    else if (asset === 'house') { this.assetGroup.add(house(new THREE.Color(color), style)); updateSign(this.plotSign, 'HOME SWEET HOME'); }
+    else updateSign(this.plotSign, 'YOUR FUTURE HOME');
   }
   setStage(stage, state) {
     const previousStage = this.stage, previousLocation = this.location;
@@ -594,6 +615,7 @@ export class World {
       const estate = buildMansionEstate(); this.mansionGroup = estate.group;
       this.city.add(this.mansionGroup); this.obstacles.push(...estate.obstacles);
       this.interactables.push({ id: 'mansion', type: 'mansion', label: 'Enter your mansion', position: estate.entrance, approachDirection: estate.front, radius: 2.5 });
+      refreshWorldLabel(this.interactables.at(-1));
       this.plot.visible = false;
     }
     if (this.mansionGroup) { this.mansionGroup.visible = rich; this.plot.visible = !rich && !!state?.asset || stage === 'purchase' || stage === 'beginning'; }
@@ -624,7 +646,7 @@ export class World {
   get playerPosition() { return this.player.pos; }
   isOnLocation(it) { return (it.location || (it.type === 'moon' ? 'moon' : 'city')) === (this.location || (this.stage === 'moon' ? 'moon' : 'city')); }
   nearby() {
-    if (this.vehicle) return { id: 'exit-vehicle', type: 'vehicle', label: ['boat', 'yacht'].includes(this.vehicle.type) ? 'Return to the dock' : 'Exit the vehicle', position: this.player.pos, radius: 3, location: this.location };
+    if (this.vehicle) return { id: 'exit-vehicle', type: 'vehicle', label: worldText(['boat', 'yacht'].includes(this.vehicle.type) ? 'Return to the dock' : 'Exit the vehicle'), position: this.player.pos, radius: 3, location: this.location };
     let best = null, bestD = Infinity;
     for (const it of this.interactables) {
       if (!World.prototype.isOnLocation.call(this, it)) continue;
@@ -730,7 +752,7 @@ export class World {
       riding.mesh.rotation.y = p.heading - Math.PI / 2;
       riding.mesh.rotation.z = sailing && !this.reducedMotion ? Math.sin(this.time * 2) * 0.035 : 0;
       if (!sailing && !gliding) riding.position.copy(p.pos);
-      if (gliding && p.grounded) { this.exitVehicle(false); this.onNotice('Smooth landing! Find more gliders around the city.'); }
+      if (gliding && p.grounded) { this.exitVehicle(false); this.onNotice(worldText('Smooth landing! Find more gliders around the city.')); }
     }
     // animate player
     const m = this.playerMesh; m.position.copy(p.pos);

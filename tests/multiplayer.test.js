@@ -70,6 +70,53 @@ test('two HTTP players share poses, appearance and departures only in their own 
   assert.equal((await post(`/api/rooms/${anna.code}/state`, { snapshot: pose() }, carlos.token)).status, 401);
 });
 
+test('JSON room sync preserves optional poses and exposes only authorized players from the same room', async t => {
+  const { create, post } = await serverFor(t);
+  const anna = await create('Anna'), other = await create('Other room');
+  const joined = await post(`/api/rooms/${anna.code}/join`, { name: 'Carlos' });
+  assert.equal(joined.status, 201);
+  const carlos = joined.data, path = `/api/rooms/${anna.code}/sync`;
+  assert.equal((await post(path)).status, 401);
+  assert.equal((await post(path, {}, other.token)).status, 401);
+  const snapshot = pose({ x: 18, location: 'moon', costume: 'Dragon', flying: true, wallet: 1e12, token: 'private' });
+  const updated = await post(path, { snapshot }, carlos.token);
+  assert.equal(updated.status, 200);
+  assert.equal(updated.data.players.length, 2);
+  const polled = await post(path, {}, anna.token);
+  assert.equal(polled.status, 200);
+  assert.deepEqual(polled.data.players, updated.data.players);
+  const remote = polled.data.players.find(player => player.id === carlos.playerId);
+  assert.equal(remote.x, 18); assert.equal(remote.location, 'moon'); assert.equal(remote.costume, 'Dragon'); assert.equal(remote.flying, true);
+  assert.equal(remote.wallet, undefined); assert.equal(remote.token, undefined);
+  for (const player of polled.data.players) assert.equal(player.token, undefined);
+  const isolated = await post(`/api/rooms/${other.code}/sync`, {}, other.token);
+  assert.deepEqual(isolated.data.players.map(player => player.id), [other.playerId]);
+  for (const invalid of [null, [], {}, pose({ x: 1000 }), pose({ costume: 'Unknown' })]) {
+    assert.equal((await post(path, { snapshot: invalid }, carlos.token)).status, 400);
+  }
+  const unchanged = await post(path, {}, carlos.token);
+  assert.deepEqual(unchanged.data.players.find(player => player.id === carlos.playerId), remote);
+  assert.equal((await post(`/api/rooms/${anna.code}/leave`, {}, carlos.token)).status, 200);
+  assert.deepEqual((await post(path, {}, anna.token)).data.players.map(player => player.id), [anna.playerId]);
+  assert.equal((await post(path, {}, carlos.token)).status, 401);
+});
+
+test('JSON sync shares the player request budget and keeps idle seats alive', async t => {
+  let clock = 1000;
+  const { create, post, rooms } = await serverFor(t, { roomOptions: { now: () => clock, idleMs: 1000 } });
+  const session = await create('Host'), path = `/api/rooms/${session.code}/sync`;
+  for (let i = 0; i < 25; i++) assert.equal((await post(path, {}, session.token)).status, 200);
+  assert.equal((await post(path, {}, session.token)).status, 429);
+  assert.equal((await post(`/api/rooms/${session.code}/state`, { snapshot: pose() }, session.token)).status, 429);
+  for (let i = 0; i < 4; i++) {
+    clock += 750;
+    assert.equal((await post(path, {}, session.token)).status, 200);
+    rooms.sweep();
+  }
+  clock += 1001; rooms.sweep();
+  assert.equal((await post(path, {}, session.token)).status, 404);
+});
+
 test('rooms reject wrong authorization, invalid input, oversized payloads and ninth players', async t => {
   const { create, post, baseUrl } = await serverFor(t);
   for (const name of ['', 'x'.repeat(21), '<script>', 'hello\nworld', 42]) assert.equal((await post('/api/rooms', { name })).status, 400);
@@ -106,9 +153,18 @@ test('room capacity, state rate limits, disconnected streams and expired seats a
   assert.equal((await post('/api/rooms', { name: 'Fresh' })).status, 201);
 });
 
-test('browser network clients join, exchange avatars, stay alive without new poses and leave honestly', async t => {
+test('browser network clients work through a JSON-only proxy without opening an event stream', async t => {
   const { baseUrl } = await serverFor(t, { roomOptions: { idleMs: 250, sweepMs: 50, heartbeatMs: 50 } });
-  const errors = [], a = new Multiplayer({ baseUrl, updateMs: 20, heartbeatMs: 50, onError: error => errors.push(error) }), b = new Multiplayer({ baseUrl, updateMs: 20, heartbeatMs: 50, onError: error => errors.push(error) });
+  let streamRequests = 0, syncRequests = 0;
+  const jsonOnlyFetch = async (url, options) => {
+    if (new URL(url).pathname.endsWith('/events')) { streamRequests++; throw new Error('This proxy cannot stream responses.'); }
+    if (new URL(url).pathname.endsWith('/sync')) syncRequests++;
+    const response = await fetch(url, options);
+    // A buffering proxy only forwards a response after the upstream body ends.
+    return new Response(await response.text(), { status: response.status, headers: response.headers });
+  };
+  const errors = [], options = { baseUrl, fetch: jsonOnlyFetch, updateMs: 20, heartbeatMs: 50, onError: error => errors.push(error) };
+  const a = new Multiplayer(options), b = new Multiplayer(options);
   t.after(() => a.destroy()); t.after(() => b.destroy());
   a.update(pose({ x: -10, costume: 'Superman' }));
   const room = await a.create('Anna'); await b.join(room.toLowerCase(), 'Carlos');
@@ -120,6 +176,63 @@ test('browser network clients join, exchange avatars, stay alive without new pos
   assert.equal(a.status, 'connected'); assert.equal(b.status, 'connected');
   await b.leave(); await eventually(() => a.peers.length === 0);
   assert.equal(b.status, 'disconnected'); assert.equal(b.room, null); assert.equal(b.playerId, null);
+  assert.equal(streamRequests, 0); assert.ok(syncRequests >= 4);
+  assert.deepEqual(errors, []);
+});
+
+test('invalid initial sync responses never announce a connected room', async t => {
+  const { baseUrl } = await serverFor(t);
+  let players;
+  const statuses = [], errors = [];
+  const client = new Multiplayer({
+    baseUrl,
+    fetch: (url, options) => new URL(url).pathname.endsWith('/sync')
+      ? Promise.resolve(Response.json({ players }))
+      : fetch(url, options),
+    onChange: state => statuses.push(state.status),
+    onError: error => errors.push(error),
+  });
+  t.after(() => client.destroy());
+  for (players of ['invalid', [], [null], [{ id: 'someone-else' }]]) {
+    await assert.rejects(client.create('Guest'), /invalid player list/);
+    assert.equal(client.status, 'disconnected'); assert.equal(client.room, null); assert.equal(client.playerId, null);
+  }
+  assert.ok(!statuses.includes('connected')); assert.equal(errors.length, 4);
+});
+
+test('a cancelled initial sync cannot connect or overwrite a newer room when its response arrives late', { timeout: 5000 }, async t => {
+  const { baseUrl } = await serverFor(t);
+  let releaseFirstSync, markFirstSync, holdFirst = true;
+  const firstSyncStarted = new Promise(resolve => { markFirstSync = resolve; });
+  const firstSyncReleased = new Promise(resolve => { releaseFirstSync = resolve; });
+  t.after(releaseFirstSync);
+  const delayedFetch = async (url, options) => {
+    const response = await fetch(url, options);
+    if (new URL(url).pathname.endsWith('/sync') && holdFirst) {
+      holdFirst = false;
+      const text = await response.text();
+      markFirstSync();
+      // The response was already received before abort, but its consumer is delayed.
+      await firstSyncReleased;
+      return new Response(text, { status: response.status, headers: response.headers });
+    }
+    return response;
+  };
+  const statuses = [], errors = [];
+  const client = new Multiplayer({ baseUrl, fetch: delayedFetch, onChange: state => statuses.push(state.status), onError: error => errors.push(error) });
+  const guest = new Multiplayer({ baseUrl });
+  t.after(() => client.destroy()); t.after(() => guest.destroy());
+  const old = client.create('Old');
+  await firstSyncStarted;
+  assert.equal(client.status, 'connecting'); assert.ok(!statuses.includes('connected'));
+  await client.leave();
+  const room = await client.create('Current'); await guest.join(room, 'Guest');
+  await eventually(() => client.peers.some(player => player.name === 'Guest'));
+  const playerId = client.playerId;
+  releaseFirstSync();
+  assert.equal(await old, null);
+  assert.equal(client.status, 'connected'); assert.equal(client.room, room); assert.equal(client.playerId, playerId);
+  assert.deepEqual(client.peers.map(player => player.name), ['Guest']);
   assert.deepEqual(errors, []);
 });
 
