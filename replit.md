@@ -36,6 +36,8 @@ See Replit's [deployment types](https://docs.replit.com/features/publishing/depl
 - Money, missions, story progress, NPCs and activities remain local to each browser. There is no chat.
 - Rooms are temporary. A server restart or redeployment discards them while browser saves remain intact.
 - A disconnected player must join again. If the room no longer exists, create a new room and share its code.
+- Closing the page sends a JSON leave beacon; keepalive fetch is the fallback. The server also expires silent sessions after 15 seconds, checking every second, so force-closing Safari or losing connectivity cannot leave an avatar indefinitely. Background tabs are not explicitly disconnected, but a suspended page must rejoin if it stops contacting the server long enough.
+- The room creator alone can remove other players, with inline confirmation. Ownership is checked by the server and never transferred automatically. Removed sessions are revoked and get a clear message; this is a session removal, not a persistent ban on joining with a new session. Individual saves are unaffected.
 
 ## Game features and controls
 

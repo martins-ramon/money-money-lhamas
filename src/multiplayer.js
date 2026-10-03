@@ -1,17 +1,20 @@
 // A room shares presence and avatar poses only. Financial progress stays on this device.
 export class Multiplayer {
-  constructor({ onChange = () => {}, onPeers = () => {}, onError = () => {}, baseUrl = '', fetch: fetchRequest = globalThis.fetch.bind(globalThis), updateMs = 100, heartbeatMs = 20000 } = {}) {
+  constructor({ onChange = () => {}, onPeers = () => {}, onError = () => {}, baseUrl = '', fetch: fetchRequest = globalThis.fetch.bind(globalThis), sendBeacon = globalThis.navigator?.sendBeacon?.bind(globalThis.navigator), updateMs = 100, heartbeatMs = 5000 } = {}) {
     this.onChange = onChange; this.onPeers = onPeers; this.onError = onError;
     this.baseUrl = baseUrl; this.fetch = fetchRequest; this.updateMs = Math.max(100, updateMs); this.heartbeatMs = heartbeatMs;
+    this.sendBeacon = sendBeacon;
     this.status = 'disconnected'; this.playerId = null; this.peers = [];
     this._session = null; this._pending = null; this._generation = 0; this._latest = null; this._serialized = '';
-    this._pagehide = () => { void this.leave(); };
+    this._pagehide = () => this._leavePage();
     this._visibility = () => { if (!globalThis.document?.hidden && this._session) void this._ping(this._session); };
     globalThis.window?.addEventListener('pagehide', this._pagehide);
     globalThis.document?.addEventListener('visibilitychange', this._visibility);
   }
 
   get room() { return this._session?.code || null; }
+  get hostId() { return this._session?.hostId || null; }
+  get isHost() { return this.status === 'connected' && this.hostId === this.playerId; }
   create(name) { return this._connect('/api/rooms', name); }
   join(code, name) {
     const normalized = typeof code === 'string' ? code.trim().toUpperCase() : '';
@@ -19,7 +22,7 @@ export class Multiplayer {
     return this._connect(`/api/rooms/${normalized}/join`, name);
   }
 
-  _changed() { this.onChange({ status: this.status, room: this.room, playerId: this.playerId, players: this._session ? this.peers.length + 1 : 0 }); }
+  _changed() { this.onChange({ status: this.status, room: this.room, playerId: this.playerId, hostId: this.hostId, isHost: this.isHost, players: this._session ? this.peers.length + 1 : 0 }); }
   _clear() {
     this._pending?.abort(); this._pending = null;
     const session = this._session; this._session = null;
@@ -46,6 +49,16 @@ export class Multiplayer {
   async _notifyLeave(session) {
     if (!session) return;
     try { await this._json(`/api/rooms/${session.code}/leave`, { token: session.token, keepalive: true, timeoutMs: 3000 }); } catch { /* A disconnected player also expires on the server. */ }
+  }
+
+  _leavePage() {
+    this._generation++; const session = this._clear(); this._changed();
+    if (!session) return;
+    try {
+      const payload = new Blob([JSON.stringify({ token: session.token })], { type: 'application/json' });
+      if (this.sendBeacon?.(`${this.baseUrl}/api/rooms/${session.code}/leave`, payload)) return;
+    } catch { /* Fall back when beacon is unavailable or its queue is full. */ }
+    void this._notifyLeave(session);
   }
 
   async _connect(path, name) {
@@ -80,15 +93,33 @@ export class Multiplayer {
 
   async _exchange(session) {
     const serialized = this._serialized;
+    const removalVersion = session.removalVersion || 0;
     const body = this._latest && session.sent !== serialized ? { snapshot: this._latest } : {};
     const data = await this._json(`/api/rooms/${session.code}/sync`, { token: session.token, body, signal: session.controller.signal });
-    if (this._session !== session) return;
-    if (!Array.isArray(data.players) || !data.players.every(player => player && typeof player.id === 'string') || !data.players.some(player => player.id === session.playerId)) throw new Error('The room sent an invalid player list.');
+    if (this._session !== session || removalVersion !== (session.removalVersion || 0)) return;
+    this._acceptPlayers(session, data);
     session.lastMessage = Date.now(); session.sent = serialized;
+  }
+
+  _acceptPlayers(session, data) {
+    if (!Array.isArray(data.players) || !data.players.every(player => player && typeof player.id === 'string') || !data.players.some(player => player.id === session.playerId)) throw new Error('The room sent an invalid player list.');
+    const previousHost = session.hostId;
+    if (typeof data.hostId === 'string') session.hostId = data.hostId;
     const count = this.peers.length;
     this.peers = data.players.filter(player => player.id !== session.playerId);
     this.onPeers(this.peers);
-    if (count !== this.peers.length) this._changed();
+    if (count !== this.peers.length || previousHost !== session.hostId) this._changed();
+  }
+
+  async kick(playerId) {
+    const session = this._session;
+    if (!session || !this.isHost) throw new Error('Only the room creator can remove players.');
+    if (playerId === this.playerId) throw new Error('Choose another player to remove.');
+    const data = await this._json(`/api/rooms/${session.code}/kick`, { token: session.token, body: { playerId }, signal: session.controller.signal });
+    if (this._session !== session) return;
+    // Ignore a poll started before the removal, even if its response arrives later.
+    session.removalVersion = (session.removalVersion || 0) + 1;
+    this._acceptPlayers(session, data);
   }
 
   update(snapshot) {
@@ -111,7 +142,7 @@ export class Multiplayer {
     if (this._session !== session || this.status !== 'connected' || session.pinging) return;
     session.pinging = true;
     try { await this._json(`/api/rooms/${session.code}/ping`, { token: session.token, signal: session.controller.signal }); }
-    catch (err) { if (this._session === session && err.status !== 429) this._failed(session, new Error('The room connection was lost. Please join again.')); }
+    catch (err) { if (this._session === session && err.status !== 429) this._failed(session, err.status === 403 ? err : new Error('The room connection was lost. Please join again.')); }
     finally { session.pinging = false; }
   }
 

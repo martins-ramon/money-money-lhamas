@@ -206,7 +206,13 @@ body:not(.touch-device) .touch { display: none; }
 .language-picker select:focus-visible { outline: 3px solid var(--sky); outline-offset: 3px; }
 [data-room-input] { text-transform: uppercase; letter-spacing: .12em; }
 [data-room-roster]:empty { display: none; }
-[data-room-roster] { margin: 0; padding-left: 22px; line-height: 1.7; }
+[data-room-roster] { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.room-player { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px; border: 1px solid #2b2a3326; border-radius: 14px; background: var(--cream); }
+.room-player-details { display: grid; gap: 3px; flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+.room-player-details small { opacity: .72; }
+.room-player .btn { min-height: 44px; }
+.room-host { background: var(--lilac); }
+.room-remove-confirmation { padding: 14px; border: 2px solid var(--coral); border-radius: 14px; background: #ff6b6b12; overflow-wrap: anywhere; }
 .control-hint { bottom: 120px; }
 .prompt { bottom: calc(150px + var(--safe-bottom)); }
 @media (max-width: 760px) {

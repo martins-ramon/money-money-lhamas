@@ -53,10 +53,11 @@ function readBody(req, limit) {
 }
 
 // Rooms deliberately live in one server process. No balances, saves or chat are shared.
-export function createRoomService({ maxRooms = 100, maxPlayers = 8, idleMs = 180000, sweepMs = 10000, heartbeatMs = 15000, maxBodyBytes = 4096, now = Date.now } = {}) {
+export function createRoomService({ maxRooms = 100, maxPlayers = 8, idleMs = 15000, sweepMs = 1000, heartbeatMs = 15000, maxBodyBytes = 4096, now = Date.now } = {}) {
   const rooms = new Map(), entryLimits = new Map();
   let closed = false;
   const publicPlayers = room => [...room.players.values()].map(player => ({ id: player.id, name: player.name, ...player.snapshot }));
+  const roomState = room => ({ hostId: room.hostId, players: publicPlayers(room) });
   function send(stream, event, data) {
     if (!stream || stream.destroyed || stream.writableEnded) return;
     // A stalled reader must not build an unbounded outbound queue.
@@ -64,7 +65,7 @@ export function createRoomService({ maxRooms = 100, maxPlayers = 8, idleMs = 180
     stream.write(event ? `event: ${event}\ndata: ${JSON.stringify(data)}\n\n` : ': keepalive\n\n');
   }
   function broadcast(room) {
-    const data = { players: publicPlayers(room) };
+    const data = roomState(room);
     for (const player of room.players.values()) send(player.stream, 'peers', data);
   }
   function remove(room, player, notify = true) {
@@ -74,9 +75,13 @@ export function createRoomService({ maxRooms = 100, maxPlayers = 8, idleMs = 180
     if (!room.players.size) rooms.delete(room.code);
     else if (notify) broadcast(room);
   }
+  function pruneRoom(room, timestamp = now()) {
+    for (const player of room.players.values()) if (timestamp - player.lastSeen >= idleMs) remove(room, player);
+    for (const [token, until] of room.removedTokens) if (timestamp >= until) room.removedTokens.delete(token);
+  }
   function sweep() {
     const timestamp = now();
-    for (const room of rooms.values()) for (const player of room.players.values()) if (timestamp - player.lastSeen > idleMs) remove(room, player);
+    for (const room of rooms.values()) pruneRoom(room, timestamp);
     for (const [ip, bucket] of entryLimits) if (timestamp - bucket.at > 60000) entryLimits.delete(ip);
   }
   const sweepTimer = setInterval(sweep, sweepMs); sweepTimer.unref?.();
@@ -93,10 +98,15 @@ export function createRoomService({ maxRooms = 100, maxPlayers = 8, idleMs = 180
     room.players.set(player.id, player); broadcast(room);
     return player;
   }
-  function authorize(req, room) {
-    const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization || '')?.[1];
+  function sessionError(room, token) {
+    return room.removedTokens.has(token) ? error(403, 'You were removed from the room by its creator.') : error(401, 'Your room session ended. Join the room again.');
+  }
+  function authorize(req, room, leaveToken) {
+    // sendBeacon cannot set Authorization; accept its credential only for leaving.
+    const token = req.headers.authorization ? /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization)?.[1] : typeof leaveToken === 'string' && /^[A-Za-z0-9_-]{43}$/.test(leaveToken) ? leaveToken : undefined;
     const player = token && [...room.players.values()].find(p => timingSafeEqual(Buffer.from(p.token), Buffer.from(token)));
-    if (!player) throw error(401, 'Your room session ended. Join the room again.');
+    if (!player) throw sessionError(room, token);
+    if (now() - player.lastSeen >= idleMs) { remove(room, player); throw sessionError(room, token); }
     player.lastSeen = now();
     return player;
   }
@@ -121,39 +131,56 @@ export function createRoomService({ maxRooms = 100, maxPlayers = 8, idleMs = 180
         if (rooms.size >= maxRooms) throw error(503, 'All rooms are busy. Please try again shortly.');
         let code;
         do { code = [...randomBytes(6)].map(value => CODE_ALPHABET[value % CODE_ALPHABET.length]).join(''); } while (rooms.has(code));
-        const room = { code, players: new Map() }; rooms.set(code, room);
+        const room = { code, hostId: null, players: new Map(), removedTokens: new Map() }; rooms.set(code, room);
         const player = addPlayer(room, name);
-        json(res, 201, { code, playerId: player.id, token: player.token }); return;
+        room.hostId = player.id;
+        json(res, 201, { code, hostId: room.hostId, playerId: player.id, token: player.token }); return;
       }
-      const match = /^\/api\/rooms\/([^/]+)\/(join|events|state|sync|ping|leave)$/.exec(url.pathname);
+      const match = /^\/api\/rooms\/([^/]+)\/(join|events|state|sync|ping|leave|kick)$/.exec(url.pathname);
       if (!match || !CODE_PATTERN.test(match[1])) throw error(404, 'Room not found. Check the six-character code.');
       const [, code, action] = match;
       if (req.method !== (action === 'events' ? 'GET' : 'POST')) throw error(405, 'That request method is not available.');
       if (action === 'join') entryLimit(req);
       const room = rooms.get(code);
       if (!room) throw error(404, 'Room not found. Ask your friend to create a new room.');
+      pruneRoom(room);
+      if (!rooms.has(code)) throw error(404, 'This room closed. Ask your friend to create a new room.');
       if (action === 'join') {
         const body = await readBody(req, maxBodyBytes), name = validateName(body.name);
+        pruneRoom(room);
         if (!rooms.has(code)) throw error(404, 'This room closed. Ask your friend to create a new room.');
         const player = addPlayer(room, name);
-        json(res, 201, { code, playerId: player.id, token: player.token }); return;
+        json(res, 201, { code, hostId: room.hostId, playerId: player.id, token: player.token }); return;
       }
-      const player = authorize(req, room);
-      limitPlayer(player);
+      const leaveBody = action === 'leave' ? await readBody(req, maxBodyBytes) : null;
+      const player = authorize(req, room, leaveBody?.token);
+      // A closing page must be able to leave even if it exhausted its update budget.
+      if (action !== 'leave') limitPlayer(player);
       if (action === 'events') {
         const previous = player.stream; player.stream = res; previous?.end();
         res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store, no-transform', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no', 'X-Content-Type-Options': 'nosniff' });
         res.flushHeaders?.();
-        send(res, 'peers', { players: publicPlayers(room) });
+        send(res, 'peers', roomState(room));
         res.on('close', () => { if (player.stream === res) remove(room, player); });
         return;
       }
-      const body = await readBody(req, maxBodyBytes);
+      const body = leaveBody || await readBody(req, maxBodyBytes);
       // A disconnect can happen while the request body is still arriving.
-      if (!room.players.has(player.id)) throw error(401, 'Your room session ended. Join the room again.');
+      if (!room.players.has(player.id)) throw sessionError(room, player.token);
+      if (action === 'kick') {
+        if (player.id !== room.hostId) throw error(403, 'Only the room creator can remove players.');
+        if (typeof body.playerId !== 'string' || !/^[0-9a-f-]{36}$/.test(body.playerId) || body.playerId === player.id) throw error(400, 'Choose another player to remove.');
+        const target = room.players.get(body.playerId);
+        if (!target) throw error(404, 'That player is no longer in the room.');
+        // Keep a short, bounded revocation record so the removed client gets a clear reason.
+        room.removedTokens.set(target.token, now() + 60000);
+        while (room.removedTokens.size > 32) room.removedTokens.delete(room.removedTokens.keys().next().value);
+        remove(room, target);
+        json(res, 200, roomState(room)); return;
+      }
       if (action === 'state' || (action === 'sync' && Object.hasOwn(body, 'snapshot'))) { player.snapshot = validateSnapshot(body.snapshot); broadcast(room); }
       // A finite response avoids streaming-buffer timeouts behind hosting proxies.
-      if (action === 'sync') { json(res, 200, { players: publicPlayers(room) }); return; }
+      if (action === 'sync') { json(res, 200, roomState(room)); return; }
       if (action === 'leave') remove(room, player);
       json(res, 200, { ok: true });
     } catch (err) {

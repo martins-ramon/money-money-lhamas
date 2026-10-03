@@ -44,6 +44,10 @@ A sincronização usa requisições HTTP curtas com resposta JSON completa, comb
 
 As salas são temporárias. Reiniciar ou republicar o servidor descarta as salas, sem apagar os saves dos navegadores. Após perder a conexão, entre novamente; se a sala já tiver sido encerrada, crie outra e compartilhe o novo código. O jogo individual continua disponível fora das salas.
 
+Ao fechar a aba ou o navegador, o jogo envia um aviso de saída. Se o navegador encerrar sem conseguir avisar, o servidor remove o personagem após 15 segundos sem contato, com verificação a cada segundo. Uma página suspensa por muito tempo também perde sua vaga; ao voltar, entre na sala novamente. Apenas trocar de aba não envia uma saída.
+
+O criador da sala tem o botão **Remover / Remove** ao lado dos outros jogadores, com confirmação. O jogador removido sai da sala e recebe uma mensagem, mantendo seu progresso individual. A remoção encerra aquela sessão; não é um bloqueio permanente de novos acessos pelo código. Se o criador sair, os demais continuam jogando, mas ninguém recebe automaticamente a permissão de remover jogadores.
+
 ## Controles
 
 | Ação | Computador | Celular |

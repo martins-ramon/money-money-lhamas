@@ -100,8 +100,8 @@ const multiplayer = new Multiplayer({
   onPeers: peers => { peerView.set(peers); syncOnline(); },
   onError: error => {
     toast(translateError(error.message), 'bad');
-    if (overlayRoot.querySelector('[data-room-code]')) {
-      multiplayerPanel();
+    if (overlayRoot.querySelector('[data-online-error]')) {
+      if (overlayRoot.querySelector('[data-room-code]')) multiplayerPanel();
       overlayRoot.querySelector('[data-online-error]').textContent = translateError(error.message);
     }
   },
@@ -111,6 +111,7 @@ document.body.classList.toggle('reduced-motion', settings.reducedMotion);
 let busy = false, stageBusy = false, rent = null, nextRentAt = 0, businessAcc = 0, lastTick = performance.now();
 let trackedId = null, navigationAt = 0;
 const awardQueue = []; let nextAwardAt = 0;
+const roomRosterRenderers = new WeakMap();
 const actionBtn = $('[data-action]');
 let saveStatus = storage ? 'initial' : 'unavailable';
 
@@ -396,20 +397,93 @@ function syncOnline() {
   const count = overlayRoot.querySelector('[data-room-count]');
   if (count) count.textContent = t(`${peerView.peers.size + 1} / 8 players in this room`, `${peerView.peers.size + 1} / 8 jogadores nesta sala`);
   const roster = overlayRoot.querySelector('[data-room-roster]');
-  if (roster) {
-    roster.replaceChildren();
-    for (const peer of world.onlinePeers || []) {
-      const entry = document.createElement('li'); entry.textContent = `${peer.name} · ${peer.location === 'moon' ? t("Moon", "Lua") : t("City", "Cidade")}`; roster.append(entry);
-    }
+  if (roster) roomRosterRenderers.get(roster)?.();
+  if (!multiplayer.room) {
+    peerView.clear();
+    // A page restored from the browser cache must not display a departed room.
+    if (multiplayer.status === 'disconnected' && overlayRoot.querySelector('[data-room-code]')) multiplayerPanel();
   }
-  if (!multiplayer.room) peerView.clear();
+}
+
+function setupRoomRoster(el) {
+  const roster = el.querySelector('[data-room-roster]'), confirmation = el.querySelector('[data-remove-confirmation]');
+  const confirm = el.querySelector('[data-confirm-remove]'), cancel = el.querySelector('[data-cancel-remove]');
+  const message = el.querySelector('[data-remove-message]'), status = el.querySelector('[data-online-error]');
+  const rows = new Map();
+  let pendingId = null, removing = false;
+  const focusRoom = () => el.querySelector('[data-copy-room]')?.focus({ preventScroll: true });
+
+  function render() {
+    if (!el.isConnected) return;
+    const players = multiplayer.room ? [{ id: multiplayer.playerId, name: t('You', 'Você'), location: world.location }, ...multiplayer.peers] : [];
+    const present = new Set(players.map(player => player.id));
+    if (pendingId && (!present.has(pendingId) || !multiplayer.isHost)) {
+      pendingId = null;
+      if (confirmation.contains(document.activeElement)) focusRoom();
+    }
+    for (const [id, row] of rows) {
+      if (present.has(id)) continue;
+      const hadFocus = row.entry.contains(document.activeElement);
+      row.entry.remove(); rows.delete(id);
+      if (hadFocus) focusRoom();
+    }
+    for (const player of players) {
+      let row = rows.get(player.id);
+      if (!row) {
+        const entry = document.createElement('li'); entry.className = 'room-player'; entry.dataset.playerId = player.id;
+        entry.innerHTML = '<div class="room-player-details"><b data-player-name></b><small data-player-place></small></div><span class="tag room-host hidden" data-player-host></span><button class="btn small coral hidden" data-remove-player></button>';
+        row = { entry, name: entry.querySelector('[data-player-name]'), place: entry.querySelector('[data-player-place]'), host: entry.querySelector('[data-player-host]'), remove: entry.querySelector('[data-remove-player]') };
+        row.remove.onclick = () => {
+          if (!multiplayer.isHost || removing || !multiplayer.peers.some(peer => peer.id === player.id)) return;
+          pendingId = player.id; status.textContent = ''; render(); cancel.focus({ preventScroll: true });
+        };
+        rows.set(player.id, row); roster.append(entry);
+      }
+      // Reconcile by ID: frequent pose updates must not replace focused buttons.
+      row.name.textContent = player.name;
+      row.place.textContent = player.location === 'moon' ? t('Moon', 'Lua') : t('City', 'Cidade');
+      row.host.textContent = t('Room creator', 'Criador da sala');
+      row.host.classList.toggle('hidden', player.id !== multiplayer.hostId);
+      row.remove.classList.toggle('hidden', !multiplayer.isHost || player.id === multiplayer.playerId);
+      row.remove.textContent = t('Remove', 'Remover');
+      row.remove.setAttribute('aria-label', t(`Remove ${player.name} from the room`, `Remover ${player.name} da sala`));
+      row.remove.disabled = removing;
+    }
+    const pending = players.find(player => player.id === pendingId);
+    confirmation.classList.toggle('hidden', !pending);
+    if (pending) message.textContent = t(`Remove ${pending.name} from this room?`, `Remover ${pending.name} desta sala?`);
+    confirm.textContent = removing ? t('Removing…', 'Removendo…') : t('Confirm removal', 'Confirmar remoção');
+    cancel.textContent = t('Cancel', 'Cancelar');
+    confirm.disabled = cancel.disabled = removing;
+  }
+
+  cancel.onclick = () => {
+    const button = rows.get(pendingId)?.remove;
+    pendingId = null; render(); button?.focus({ preventScroll: true });
+  };
+  confirm.onclick = async () => {
+    const player = multiplayer.peers.find(peer => peer.id === pendingId);
+    if (!player || !multiplayer.isHost || removing) return;
+    removing = true; status.textContent = ''; render();
+    try {
+      await multiplayer.kick(player.id);
+      if (!el.isConnected) return;
+      pendingId = null;
+      status.textContent = t(`${player.name} was removed from the room.`, `${player.name} foi removido da sala.`);
+      focusRoom();
+    } catch (error) {
+      if (el.isConnected) status.textContent = translateError(error.message);
+    } finally { removing = false; render(); }
+  };
+  roomRosterRenderers.set(roster, render);
 }
 
 function multiplayerPanel() {
   const connected = !!multiplayer.room;
   const el = open(`${head(t("Explore with friends", "Explore com amigos"), t("Up to 8 players. Share a room code and explore together from different devices.", "Até 8 jogadores. Compartilhe o código da sala e explore com amigos, cada um no seu aparelho."))}
     <div class="card stack">
-    ${connected ? `<p class="muted">${t("YOUR ROOM CODE", "CÓDIGO DA SUA SALA")}</p><strong class="room-code" data-room-code></strong><p data-room-count></p><ul data-room-roster></ul>
+    ${connected ? `<p class="muted">${t("YOUR ROOM CODE", "CÓDIGO DA SUA SALA")}</p><strong class="room-code" data-room-code></strong><p data-room-count></p><ul data-room-roster aria-label="${t('Players in this room', 'Jogadores nesta sala')}"></ul>
+      <div class="room-remove-confirmation stack hidden" data-remove-confirmation><p data-remove-message role="status"></p><div class="row"><button class="btn small coral" data-confirm-remove></button><button class="btn small ghost" data-cancel-remove></button></div></div>
       <div class="row"><button class="btn sky" data-copy-room>${t("Copy invite link", "Copiar link de convite")}</button><button class="btn coral" data-leave-room>${t("Leave room", "Sair da sala")}</button></div><button class="btn" data-close>${t("Back to our adventure", "Voltar à nossa aventura")}</button>` : `
       <label class="field">${t("Your nickname", "Seu apelido")}<input data-online-name maxlength="20" autocomplete="nickname" placeholder="${t("Your name", "Seu nome")}"></label>
       <button class="btn sky" data-create-room>${t("Create a room", "Criar uma sala")}</button>
@@ -419,6 +493,7 @@ function multiplayerPanel() {
     <p class="muted">${t("Your money and missions stay in your own save. Friends appear when you are in the same place. Use the wardrobe to show off your skins and the Dance button to dance together.", "Seu dinheiro e suas missões ficam no seu próprio progresso salvo. Os amigos aparecem quando estão no mesmo lugar. Use o guarda-roupa para mostrar seus visuais e o botão Dançar para dançarem juntos.")}</p>
     </div>`);
   if (connected) {
+    setupRoomRoster(el);
     el.querySelector('[data-room-code]').textContent = multiplayer.room;
     el.querySelector('[data-copy-room]').onclick = async () => {
       const url = new URL(location.href); url.searchParams.delete('debug'); url.searchParams.set('room', multiplayer.room);

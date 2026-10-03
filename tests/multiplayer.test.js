@@ -249,6 +249,214 @@ test('failed and cancelled joins never show a phantom connection or overwrite a 
   assert.equal(client.status, 'connected'); assert.ok(client.room); assert.ok(client.playerId);
 });
 
+test('only the original room creator can remove another player and the removed session stays revoked', async t => {
+  const { create, post } = await serverFor(t);
+  const host = await create('Host');
+  const guest = (await post(`/api/rooms/${host.code}/join`, { name: 'Guest' })).data;
+  const other = (await post(`/api/rooms/${host.code}/join`, { name: 'Other' })).data;
+  const kick = `/api/rooms/${host.code}/kick`, sync = `/api/rooms/${host.code}/sync`;
+  assert.equal(host.hostId, host.playerId); assert.equal(guest.hostId, host.playerId);
+  const initial = await post(sync, {}, guest.token);
+  assert.equal(initial.data.hostId, host.playerId);
+  for (const token of [host.token, guest.token, other.token]) assert.ok(!JSON.stringify(initial.data).includes(token));
+  assert.equal((await post(kick, { playerId: other.playerId }, guest.token)).status, 403);
+  assert.equal((await post(kick, { playerId: guest.playerId })).status, 401);
+  for (const playerId of [host.playerId, null, '', 42, {}]) assert.equal((await post(kick, { playerId }, host.token)).status, 400);
+  assert.equal((await post(kick, { playerId: '00000000-0000-4000-8000-000000000000' }, host.token)).status, 404);
+  assert.equal((await post(kick, { playerId: guest.playerId }, host.token)).status, 200);
+  const remaining = await post(sync, {}, other.token);
+  assert.deepEqual(remaining.data.players.map(player => player.id).sort(), [host.playerId, other.playerId].sort());
+  for (const action of ['sync', 'state', 'ping']) {
+    const rejected = await post(`/api/rooms/${host.code}/${action}`, { snapshot: pose() }, guest.token);
+    assert.equal(rejected.status, 403);
+    assert.equal(rejected.data.error, 'You were removed from the room by its creator.');
+  }
+  assert.equal((await post(`/api/rooms/${host.code}/leave`, {}, host.token)).status, 200);
+  const afterCreatorLeaves = await post(sync, {}, other.token);
+  assert.equal(afterCreatorLeaves.data.hostId, host.playerId);
+  const newcomer = (await post(`/api/rooms/${host.code}/join`, { name: 'Newcomer' })).data;
+  assert.equal(newcomer.hostId, host.playerId);
+  assert.equal((await post(kick, { playerId: newcomer.playerId }, other.token)).status, 403);
+});
+
+test('beacon body credentials work only for leaving and cannot remove another player', async t => {
+  const { create, post } = await serverFor(t);
+  const host = await create('Host'), room = `/api/rooms/${host.code}`;
+  const guest = (await post(`${room}/join`, { name: 'Guest' })).data;
+  for (const action of ['sync', 'ping', 'state', 'kick']) {
+    assert.equal((await post(`${room}/${action}`, { token: host.token, snapshot: pose(), playerId: guest.playerId })).status, 401);
+  }
+  assert.equal((await post(`${room}/leave`, { token: 'invalid' })).status, 401);
+  assert.equal((await post(`${room}/leave`, { token: guest.token }, undefined, { headers: { Origin: 'https://other.example' } })).status, 403);
+  assert.equal((await post(`${room}/leave`, { token: guest.token, playerId: host.playerId })).status, 200);
+  const remaining = await post(`${room}/sync`, {}, host.token);
+  assert.deepEqual(remaining.data.players.map(player => player.id), [host.playerId]);
+  assert.equal((await post(`${room}/sync`, {}, guest.token)).status, 401);
+});
+
+test('silent players expire within sixteen seconds while active players keep their room and free seats', async t => {
+  let clock = 1000;
+  const { create, post, rooms } = await serverFor(t, { roomOptions: { maxPlayers: 2, now: () => clock, sweepMs: 100000 } });
+  const host = await create('Host'), room = `/api/rooms/${host.code}`;
+  const guest = (await post(`${room}/join`, { name: 'Closed browser' })).data;
+  for (clock of [6000, 11000, 16000]) assert.equal((await post(`${room}/ping`, {}, host.token)).status, 200);
+  clock = 17000; rooms.sweep();
+  const remaining = await post(`${room}/sync`, {}, host.token);
+  assert.deepEqual(remaining.data.players.map(player => player.id), [host.playerId]);
+  assert.equal((await post(`${room}/sync`, {}, guest.token)).status, 401);
+  assert.equal((await post(`${room}/join`, { name: 'Replacement' })).status, 201);
+});
+
+test('expired sessions cannot revive before the sweep', async t => {
+  let clock = 1000;
+  const { create, post } = await serverFor(t, { roomOptions: { maxPlayers: 3, now: () => clock, sweepMs: 100000 } });
+  const host = await create('Host'), room = `/api/rooms/${host.code}`;
+  const late = (await post(`${room}/join`, { name: 'Late request' })).data;
+  const silent = (await post(`${room}/join`, { name: 'Silent browser' })).data;
+  clock = 10000; assert.equal((await post(`${room}/ping`, {}, host.token)).status, 200);
+  clock = 17000;
+  assert.equal((await post(`${room}/sync`, { snapshot: pose() }, late.token)).status, 401);
+  assert.equal((await post(`${room}/join`, { name: 'New guest' })).status, 201);
+  const remaining = await post(`${room}/sync`, {}, host.token);
+  assert.deepEqual(remaining.data.players.map(player => player.name).sort(), ['Host', 'New guest']);
+  assert.equal((await post(`${room}/ping`, {}, silent.token)).status, 401);
+});
+
+test('joining a full room immediately reclaims an expired seat before the periodic sweep', async t => {
+  let clock = 1000;
+  const { create, post } = await serverFor(t, { roomOptions: { maxPlayers: 2, now: () => clock, sweepMs: 100000 } });
+  const host = await create('Host'), room = `/api/rooms/${host.code}`;
+  await post(`${room}/join`, { name: 'Silent guest' });
+  clock = 10000; assert.equal((await post(`${room}/ping`, {}, host.token)).status, 200);
+  clock = 17000;
+  assert.equal((await post(`${room}/join`, { name: 'Replacement' })).status, 201);
+  const result = await post(`${room}/sync`, {}, host.token);
+  assert.deepEqual(result.data.players.map(player => player.name).sort(), ['Host', 'Replacement']);
+});
+
+test('pagehide queues a JSON beacon immediately and clears the departing client locally', async t => {
+  const { baseUrl } = await serverFor(t);
+  const host = new Multiplayer({ baseUrl });
+  const calls = [], deliveries = []; let fetchLeaves = 0;
+  const guest = new Multiplayer({
+    baseUrl,
+    fetch: (url, options) => { if (url.endsWith('/leave')) fetchLeaves++; return fetch(url, options); },
+    sendBeacon: (url, body) => {
+      calls.push({ url, body });
+      deliveries.push(fetch(url, { method: 'POST', body }));
+      return true;
+    },
+  });
+  t.after(() => host.destroy()); t.after(() => guest.destroy());
+  const room = await host.create('Host'); await guest.join(room, 'Safari');
+  await eventually(() => host.peers.length === 1);
+  guest._pagehide();
+  assert.equal(guest.status, 'disconnected'); assert.equal(guest.room, null); assert.deepEqual(guest.peers, []);
+  assert.equal(calls.length, 1); assert.equal(calls[0].url, `${baseUrl}/api/rooms/${room}/leave`);
+  assert.equal(calls[0].body.type, 'application/json');
+  const body = JSON.parse(await calls[0].body.text());
+  assert.deepEqual(Object.keys(body), ['token']); assert.equal(body.token.length, 43);
+  assert.equal((await deliveries[0]).status, 200);
+  await eventually(() => host.peers.length === 0);
+  assert.equal(fetchLeaves, 0);
+  guest._pagehide(); assert.equal(calls.length, 1);
+});
+
+test('failed or unavailable beacons use one keepalive leave request', async t => {
+  const { baseUrl } = await serverFor(t);
+  const host = new Multiplayer({ baseUrl }); t.after(() => host.destroy());
+  const room = await host.create('Host');
+  for (const sendBeacon of [() => false, () => { throw new Error('Beacon unavailable'); }, null]) {
+    const leaves = [];
+    const guest = new Multiplayer({
+      baseUrl, sendBeacon,
+      fetch: (url, options) => { if (url.endsWith('/leave')) leaves.push(options); return fetch(url, options); },
+    });
+    t.after(() => guest.destroy());
+    await guest.join(room, 'Guest'); await eventually(() => host.peers.length === 1);
+    guest._pagehide();
+    await eventually(() => host.peers.length === 0);
+    assert.equal(leaves.length, 1); assert.equal(leaves[0].keepalive, true);
+    assert.equal(guest.status, 'disconnected'); assert.equal(guest.room, null);
+  }
+});
+
+test('a lost pagehide notification still expires on the server without disturbing an active host', async t => {
+  let clock = 1000;
+  const { baseUrl, post, rooms } = await serverFor(t, { roomOptions: { now: () => clock, sweepMs: 100000 } });
+  const host = new Multiplayer({ baseUrl, updateMs: 100000, heartbeatMs: 100000 });
+  const guest = new Multiplayer({ baseUrl, updateMs: 100000, heartbeatMs: 100000, sendBeacon: () => false, fetch: (url, options) => url.endsWith('/leave') ? Promise.reject(new Error('Browser was terminated')) : fetch(url, options) });
+  t.after(() => host.destroy()); t.after(() => guest.destroy());
+  const room = await host.create('Host'); await guest.join(room, 'Closed browser');
+  const hostToken = host._session.token, guestId = guest.playerId;
+  guest._pagehide();
+  clock = 10000; assert.equal((await post(`/api/rooms/${room}/ping`, {}, hostToken)).status, 200);
+  clock = 17000; rooms.sweep();
+  const result = await post(`/api/rooms/${room}/sync`, {}, hostToken);
+  assert.equal(result.status, 200); assert.ok(!result.data.players.some(player => player.id === guestId));
+  assert.deepEqual(result.data.players.map(player => player.id), [host.playerId]);
+});
+
+test('creator client removes peers and a kicked client stops polling without reviving its session', async t => {
+  const { baseUrl } = await serverFor(t);
+  const errors = []; let activeSyncs = 0, maxActiveSyncs = 0, syncCount = 0;
+  const host = new Multiplayer({ baseUrl });
+  const guest = new Multiplayer({
+    baseUrl, heartbeatMs: 5000, onError: err => errors.push(err),
+    fetch: async (url, options) => {
+      if (!url.endsWith('/sync')) return fetch(url, options);
+      syncCount++; maxActiveSyncs = Math.max(maxActiveSyncs, ++activeSyncs);
+      try { await new Promise(resolve => setTimeout(resolve, 150)); return await fetch(url, options); }
+      finally { activeSyncs--; }
+    },
+  });
+  t.after(() => host.destroy()); t.after(() => guest.destroy());
+  const room = await host.create('Host'); await guest.join(room, 'Guest');
+  assert.equal(host.isHost, true); assert.equal(host.hostId, host.playerId);
+  assert.equal(guest.isHost, false); assert.equal(guest.hostId, host.playerId);
+  const oldGuestId = guest.playerId;
+  await eventually(() => host.peers.length === 1 && activeSyncs === 1);
+  assert.equal(await host.kick(oldGuestId), undefined);
+  await eventually(() => guest.status === 'disconnected' && host.peers.length === 0);
+  assert.equal(guest.room, null); assert.equal(guest.playerId, null); assert.equal(guest.hostId, null); assert.equal(guest.isHost, false);
+  assert.deepEqual(guest.peers, []); assert.equal(errors.length, 1); assert.match(errors[0].message, /removed from the room by its creator/);
+  const countAtDisconnect = syncCount;
+  await new Promise(resolve => setTimeout(resolve, 350));
+  assert.equal(syncCount, countAtDisconnect); assert.equal(maxActiveSyncs, 1);
+  assert.equal(host.peers.some(player => player.id === oldGuestId), false);
+});
+
+test('a delayed peer list cannot restore a player after the creator removed them', async t => {
+  const { baseUrl } = await serverFor(t);
+  let holdNext = false, release, markHeld;
+  const held = new Promise(resolve => { markHeld = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  t.after(release);
+  const host = new Multiplayer({
+    baseUrl, updateMs: 100000, heartbeatMs: 100000,
+    fetch: async (url, options) => {
+      const response = await fetch(url, options);
+      if (url.endsWith('/sync') && holdNext) {
+        holdNext = false;
+        const body = await response.text();
+        markHeld(); await gate;
+        return new Response(body, { status: response.status, headers: response.headers });
+      }
+      return response;
+    },
+  });
+  const guest = new Multiplayer({ baseUrl });
+  t.after(() => host.destroy()); t.after(() => guest.destroy());
+  const room = await host.create('Host'); await guest.join(room, 'Guest');
+  const guestId = guest.playerId;
+  await host._sync(host._session); assert.equal(host.peers.length, 1);
+  holdNext = true;
+  const stalePoll = host._sync(host._session); await held;
+  await host.kick(guestId); assert.deepEqual(host.peers, []);
+  release(); await stalePoll;
+  assert.deepEqual(host.peers, []); assert.equal(host.status, 'connected');
+});
+
 test('production server serves only built assets and never hidden files or symlinks outside dist', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'llama-server-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
