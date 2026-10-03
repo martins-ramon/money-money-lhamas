@@ -10,21 +10,33 @@ O jogo é em **inglês**, com visual cartoon (estilo Looney Tunes) e uma pitada 
 npm ci
 npm run dev      # servidor de desenvolvimento em http://localhost:5000
 npm run build    # gera a versão final em dist/
-npm run preview  # confere a versão final em http://localhost:4173
-npm test         # testes da lógica financeira (node --test)
+npm run preview  # confere o build e as salas em http://localhost:4173
+npm run serve    # produção: serve dist/ e a API em http://localhost:5000
+npm test         # regras, controles, missões, veículos e salas (node --test)
 ```
 
 Requer Node.js 22.12 ou mais novo (com nvm, execute `nvm use`). `npm start` também inicia o desenvolvimento. Abra http://localhost:5000 no navegador; mantenha o terminal rodando e use Ctrl+C para encerrar. Se a porta estiver ocupada, encerre o outro servidor antes de iniciar.
 
-Não precisa de backend: o progresso é salvo no `localStorage` do navegador. Cada navegador e endereço mantém seu próprio progresso; o save de localhost não é transferido automaticamente para o Replit.
+O progresso continua salvo no `localStorage` do navegador. Cada navegador e endereço mantém seu próprio progresso; o save de localhost não é transferido automaticamente para o Replit. O multiplayer usa uma API Node.js no mesmo endereço do jogo. Ela já está disponível em `dev`, `preview` e `serve`; não precisa de banco de dados, serviço externo ou segredo. Execute `npm run build` antes de `npm run serve`. A porta de produção pode ser definida pela variável `PORT` (padrão: 5000).
 
 ## Rodar e hospedar no Replit
 
 1. Importe este repositório no Replit, incluindo o arquivo oculto `.replit`.
-2. Clique em **Run**. A configuração inicia o jogo; abra o **Preview** para jogar. O servidor escuta em `0.0.0.0:5000`, mapeado para a porta externa 80, e aceita o domínio do proxy do Replit.
-3. Quando o jogo estiver pronto, use **Publish** com o tipo **Static**. O arquivo `.replit` configura o build `npm ci --include=dev && npm run build` e a pasta pública `dist`.
+2. Clique em **Run**. Abra o **Preview** para jogar. O servidor escuta em `0.0.0.0:5000`, mapeado para a porta externa 80, e serve também a API de salas.
+3. Em **Publishing → Adjust settings**, selecione **Reserved VM**. A configuração local usa `deploymentTarget = "vm"`, build `npm ci --include=dev && npm run build` e comando de execução `npm run serve`.
+4. Mantenha uma única instância do servidor Node.js: as salas ficam na memória desse processo. Publique a nova versão após conferir as configurações.
 
-A publicação serve os arquivos finais, sem precisar manter um servidor Node.js. `npm run preview` serve apenas para conferir o build localmente. Configuração baseada na [documentação do Replit](https://docs.replit.com/features/project-setup/configuration) e na [configuração de publicação estática](https://docs.replit.com/features/deployment-customization/static-deployments-advanced).
+**Publicações existentes precisam de ajuste manual:** se o projeto já estiver publicado como **Static**, altere o tipo para **Reserved VM** no painel do Replit. Uma publicação estática não executa a API multiplayer. Os arquivos do repositório foram preparados para VM; a publicação em nuvem ainda não foi alterada.
+
+O Replit documenta a escolha do tipo em [Deployment types](https://docs.replit.com/features/publishing/deployment-types) e os comandos de build/execução em [App Configuration](https://docs.replit.com/features/project-setup/configuration).
+
+## Jogar online com amigos
+
+Abra **Play online**, escolha um nome e crie uma sala. Compartilhe o código de **seis caracteres** ou o link exibido para que os amigos entrem na mesma sala, com até **oito jogadores**. Todos precisam acessar a mesma instalação do jogo; uma sala no desenvolvimento local não aparece na publicação do Replit.
+
+As salas mostram a presença, posição, roupa, dança, voo e veículo dos amigos. Para enxergar outro jogador, os dois precisam estar no mesmo lugar: cidade ou Lua. Dinheiro, missões, história e salvamento continuam independentes em cada navegador; NPCs e atividades são simulados localmente. Não há chat.
+
+As salas são temporárias. Reiniciar ou republicar o servidor descarta as salas, sem apagar os saves dos navegadores. Após perder a conexão, entre novamente; se a sala já tiver sido encerrada, crie outra e compartilhe o novo código. O jogo individual continua disponível fora das salas.
 
 ## Controles
 
@@ -34,13 +46,23 @@ A publicação serve os arquivos finais, sem precisar manter um servidor Node.js
 | Correr | Segurar Shift | Botão **Run** (ativa/desativa) |
 | Olhar | Arrastar o mouse | Deslizar no lado direito da tela |
 | Pular | Espaço | Botão **Jump** |
-| Interagir | E ou Enter | Botão **Action** |
+| Interagir, entrar ou sair de veículo | E ou Enter | Botão **Action** |
+| Dirigir, pilotar ou guiar planador | WASD ou setas | Joystick |
+| Voar ou pousar com skin compatível | F | Botão **Fly** |
+| Dançar ou parar de dançar | B | Botão **Dance** |
+| Atirar leite com Cyborg | Q | Botão **Milk** |
 | Fechar painel | Esc | Botão × |
 | Guia da cidade | M ou botão de mapa | Botão de mapa |
 | Pausar | Esc durante a exploração | Menu |
 
 ## Experiência do jogador
 
+- Cidade ampliada para raio de 98 unidades, com novos quarteirões, parque, praia, marina e NPCs humanos adultos cartoon, incluindo banhistas e mulher de biquíni.
+- Três carros disponíveis pela cidade e o carro da primeira compra podem ser dirigidos. Barco e iate saem da marina; a ação de sair devolve o jogador e a embarcação ao cais. Três estações de planador lançam o jogador, que guia a descida até pousar.
+- Novas skins gratuitas desde o início: **Superman**, **Charlotte Katakuri** (One Piece), **Skeleton**, **Dragon**, **Cyborg**, **Human** e **Zombie**. Superman, Cyborg e Dragon voam; Cyborg tem botas propulsoras e dispara leite. O guarda-roupa preserva as fantasias desbloqueadas pela história.
+- Botão de dança e controles de habilidades também no celular. Andar interrompe a dança. Durante a cobrança do Seu Barriga, é preciso resolver a perseguição antes de entrar em veículos ou ativar o voo.
+- Depois de liberar o mundo livre, viaje novamente à Lua e volte pelo menu ou pelos portais, mantendo dinheiro, missões e progresso da história.
+- Seis missões extras de finanças, disponíveis desde o começo, sobre orçamento, desconto, poupança, preço por unidade, troco e planejamento de uma barraca de limonada. Cada uma tem duas perguntas explicadas e paga **$150 uma única vez**; revisitar pelo catálogo permite estudar novamente sem repetir a recompensa.
 - Tela inicial com continuação da partida, personagens 3D e controle de som.
 - Missão atual com progresso, bússola, distância e um feixe dourado no destino. O mapa permite escolher outro local; durante a cobrança, o guia aponta para o arbusto mais próximo. A indicação é em linha reta: contorne os prédios pelas ruas.
 - Movimento relativo à câmera, aceleração suave, corrida, tolerância de 150 ms para o comando de salto e gravidade menor na Lua.
@@ -51,7 +73,7 @@ A publicação serve os arquivos finais, sem precisar manter um servidor Node.js
 - Menu com qualidade **High/Balanced**, movimento reduzido e opção de esconder o minimapa. Preferências são salvas separadamente da partida; o jogo continua funcionando se o armazenamento estiver bloqueado.
 - Navegação dos painéis pelo teclado, foco visível e mensagens acessíveis. O churrasco final é liberado após as três missões secundárias.
 
-`npm test` executa testes das regras, direções em diferentes ângulos da câmera, joystick, missões, preferências e minigames em DOM simulado. Esses testes não substituem a validação visual em navegadores e celulares reais.
+`npm test` executa testes das regras, direções em diferentes ângulos da câmera, joystick, missões, preferências, limites dos veículos, viagens e salas multiplayer, além dos minigames em DOM simulado. Esses testes não substituem a validação visual em navegadores e celulares reais.
 
 ## A jornada
 
@@ -75,23 +97,38 @@ Bônus: 12 moedas da sorte escondidas pela cidade e lhamas cidadãs que saem voa
 | Patrimônio líquido | Carteira + poupança + (ações × preço) |
 | Retorno sobre investimento (payback) | Custo da melhoria ÷ ganho por tick |
 | Mercado de ações | Preços variam até ±8% por tick; lucro/prejuízo na venda |
-| Porcentagem | Quiz da missão Helper |
+| Porcentagem e descontos | Quiz da missão Helper e missão Spot the real discount |
+| Orçamento e troco | Plan your pocket money e Check your change |
+| Preço por unidade | Compare the snack packs |
+| Planejamento de um pequeno negócio | Run a lemonade stand |
 
 ## Estrutura do código
 
 ```
-index.html          página única
-src/main.js         HUD, painéis, cutscenes, aluguel, loop principal
-src/model.js        estado do jogo e regras financeiras (puro, testável)
-src/world.js        cena 3D (three.js): cidade, Lua, lhamas, Seu Barriga, NPCs
-src/minigames.js    minigames dos empregos, defesa da mansão e quiz
-src/icons.js        ícones SVG
-src/experience.js   controles, missões, preferências e ciclo das atividades
-src/feedback.js     minimapa e celebrações
-src/style.css       interface cartoon
-tests/model.test.js testes das regras (node:test)
-tests/experience.test.js controles, progressão e cancelamento
-tests/minigames.test.js interações e pausa em DOM simulado
+index.html                  página única
+server.mjs                  servidor de produção: dist/ + API de salas
+server/rooms.js             salas temporárias, sessões e eventos multiplayer
+vite.config.js              Vite e API de salas em dev/preview
+src/main.js                 HUD, painéis, cutscenes, aluguel e loop principal
+src/model.js                estado, salvamento e regras financeiras
+src/world.js                cena 3D, locomoção, veículos e habilidades
+src/world-expansion.js      novos bairros, praia, marina, portais e limites
+src/avatars.js              skins e humanos cartoon construídos em Three.js
+src/finance-missions.js     catálogo das seis missões financeiras
+src/multiplayer.js          cliente de salas e sincronização de presença
+src/peers.js                representação 3D dos outros jogadores
+src/minigames.js            empregos, defesa da mansão e quiz
+src/icons.js                ícones SVG
+src/experience.js           controles, missões, preferências e atividades
+src/feedback.js             minimapa e celebrações
+src/style.css               interface cartoon
+tests/model.test.js         regras e compatibilidade dos saves
+tests/finance-missions.test.js missões e recompensas
+tests/experience.test.js    controles, progressão e cancelamento
+tests/minigames.test.js     interações e pausa em DOM simulado
+tests/mansion.test.js       entrada e enquadramento da mansão
+tests/world-adventure.test.js limites, veículos, voo e localização
+tests/multiplayer.test.js   salas, clientes e servidor de produção
 ```
 
-Abra o jogo com `?debug` na URL para expor `window.__mml` (estado, mundo e teletransporte) e facilitar testes.
+Abra o jogo com `?debug` na URL para expor `window.__mml` (estado, mundo, teletransporte e multiplayer) e facilitar testes.

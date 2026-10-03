@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { activity, movementInput, missionFor, readSettings } from '../src/experience.js';
 import { act, initialState, JOBS } from '../src/model.js';
+import { FINANCE_MISSIONS } from '../src/finance-missions.js';
 
 const move = (keys, yaw = 0, joy = { x: 0, y: 0 }) => movementInput(new Set(keys), joy, yaw);
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
@@ -61,6 +62,12 @@ test('free-world guide leads through the side missions before the finale', () =>
   }
   assert.equal(missionFor(state).id, 'bbq');
   state = act(state, { type: 'celebrate' });
+  assert.equal(missionFor(state).id, 'budget');
+  for (const mission of FINANCE_MISSIONS) state = act(state, { type: 'financeQuest', id: mission.id, answers: mission.questions.map(q => q.answer) });
+  assert.equal(missionFor(state).id, undefined);
+  state = act(state, { type: 'travel', location: 'moon' });
+  assert.equal(missionFor(state).id, 'to-city');
+  state = act(state, { type: 'travel', location: 'city' });
   assert.equal(missionFor(state).id, undefined);
 });
 

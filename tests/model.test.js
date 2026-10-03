@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, initialState, loadGame, liquid, wealth, portfolio, completed, chapter, income, upgradeCost, JOBS, STOCKS, SAVE_KEY } from '../src/model.js';
+import { act, initialState, loadGame, liquid, wealth, portfolio, completed, chapter, income, upgradeCost, JOBS, STOCKS, SAVE_KEY, EXTRA_COSTUMES } from '../src/model.js';
 
 const run = (state, ...actions) => actions.reduce((s, a) => act(s, a), state);
 const started = (character = 'anna') => act(initialState(), { type: 'start', character });
@@ -144,9 +144,9 @@ test('one billion dollars unlocks the Moon and the Lunar billionaire suit', () =
   // fast-forward with a giant trade instead of thousands of ticks
   s = { ...s, prices: { ...s.prices, tesla: 1e6 }, holdings: { tesla: 1200 } };
   s = act(s, { type: 'businessTick' });
-  assert.equal(s.stage, 'moon'); assert.equal(s.costume, 'Lunar billionaire'); assert.equal(chapter(s), 4);
+  assert.equal(s.stage, 'moon'); assert.equal(s.location, 'moon'); assert.equal(s.costume, 'Lunar billionaire'); assert.equal(chapter(s), 4);
   s = act(s, { type: 'moon' });
-  assert.equal(s.stage, 'freeplay');
+  assert.equal(s.stage, 'freeplay'); assert.equal(s.location, 'city');
   s = act(s, { type: 'quest', id: 'helper' });
   assert.ok(s.sideQuests.includes('helper'));
   assert.throws(() => act(s, { type: 'quest', id: 'helper' }), /not available/);
@@ -188,4 +188,49 @@ test('every job has a unique location and costume', () => {
   assert.equal(new Set(JOBS.map(j => j.costume)).size, JOBS.length);
   assert.equal(new Set(JOBS.map(j => j.location.join(','))).size, JOBS.length);
   assert.deepEqual(JOBS.map(j => j.pay), [400, 400, 400, 900, 900, 900]);
+});
+
+test('all extra skins are available immediately and remain selected after saving', () => {
+  for (const costume of EXTRA_COSTUMES) {
+    const state = act(started(), { type: 'costume', costume });
+    assert.equal(state.costume, costume);
+    assert.deepEqual(loadGame({ getItem: () => JSON.stringify(state) }), state);
+  }
+  assert.throws(() => act(started(), { type: 'costume', costume: 'Made-up skin' }), /unlock/);
+});
+
+test('old v1 saves retain progress and gain the new skins and mission fields', () => {
+  const state = act(starterDone(), { type: 'purchase', asset: 'house' });
+  state.costumes = state.costumes.filter(c => !EXTRA_COSTUMES.includes(c));
+  delete state.location; delete state.financeQuests;
+  const restored = loadGame({ getItem: () => JSON.stringify(state) });
+  assert.equal(restored.started, true);
+  assert.equal(restored.stage, state.stage);
+  assert.equal(restored.wallet, state.wallet);
+  assert.equal(restored.asset, state.asset);
+  assert.deepEqual(restored.shifts, state.shifts);
+  assert.deepEqual(restored.ledger, state.ledger);
+  assert.deepEqual(restored.financeQuests, []);
+  assert.equal(restored.location, 'city');
+  assert.deepEqual(restored.costumes, [...state.costumes, ...EXTRA_COSTUMES]);
+  const lunar = loadGame({ getItem: () => JSON.stringify({ ...state, stage: 'moon' }) });
+  assert.equal(lunar.location, 'moon');
+});
+
+test('Moon return trips preserve progression, money and completed activities', () => {
+  const state = { ...started(), stage: 'freeplay', wallet: 1234, savings: 5678, sideQuests: ['picnic', 'explorer', 'helper'], financeQuests: ['budget'], celebration: true };
+  const lunar = act(state, { type: 'travel', location: 'moon' });
+  assert.deepEqual(lunar, { ...state, location: 'moon' });
+  assert.deepEqual(loadGame({ getItem: () => JSON.stringify(lunar) }), lunar);
+  assert.deepEqual(act(lunar, { type: 'travel', location: 'city' }), state);
+  assert.throws(() => act(started(), { type: 'travel', location: 'moon' }), /first Moon adventure/);
+  assert.throws(() => act({ ...started(), stage: 'moon', location: 'moon' }, { type: 'travel', location: 'city' }), /first Moon adventure/);
+  assert.throws(() => act(state, { type: 'travel', location: 'mars' }), /city or the Moon/);
+});
+
+test('save validation rejects invalid new locations and finance mission progress', () => {
+  for (const fields of [{ location: 'mars' }, { location: 'moon' }, { financeQuests: ['unknown'] }, { financeQuests: ['budget', 'budget'] }, { financeQuests: 'budget' }]) {
+    const restored = loadGame({ getItem: () => JSON.stringify({ ...started(), ...fields }) });
+    assert.equal(restored.started, false);
+  }
 });

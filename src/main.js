@@ -1,10 +1,13 @@
 import './style.css';
 import { icon, llamaLogo } from './icons.js';
-import { JOBS, STOCKS, CHAPTERS, money, initialState, loadGame, act, liquid, portfolio, wealth, chapter, income, upgradeCost, completed, SAVE_KEY } from './model.js';
+import { JOBS, STOCKS, CHAPTERS, EXTRA_COSTUMES, money, initialState, loadGame, act, liquid, portfolio, wealth, chapter, income, upgradeCost, completed, SAVE_KEY } from './model.js';
+import { FINANCE_MISSIONS } from './finance-missions.js';
 import { World, preview } from './world.js';
 import { playShift, defendMansion, playQuiz } from './minigames.js';
 import { missionFor, readSettings, SETTINGS_KEY } from './experience.js';
 import { celebrate, drawMap } from './feedback.js';
+import { Multiplayer } from './multiplayer.js';
+import { PeerView } from './peers.js';
 
 const TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 if (TOUCH) document.body.classList.add('touch-device');
@@ -41,6 +44,8 @@ app.innerHTML = `
     <div class="hud-bottom">
       <div class="journey-status"><div class="tag" data-chapter>Chapter 1</div><small data-save-status>Progress saved on this device</small></div>
       <div class="hud-actions">
+        <button class="btn icon" data-open="multiplayer" title="Play online with friends" aria-label="Play online with friends">👥</button>
+        <button class="btn icon" data-open="finance" title="Money missions" aria-label="Money missions">🎯</button>
         <button class="btn icon" data-open="map" title="Town guide (M)" aria-label="Town guide">${icon('map')}</button>
         <button class="btn icon" data-open="wallet" title="Wallet & Piggy Bank">${icon('wallet')}</button>
         <button class="btn icon" data-open="wardrobe" title="Wardrobe">${icon('shirt')}</button>
@@ -57,6 +62,15 @@ app.innerHTML = `
   </section>
   <button class="minimap hidden" data-minimap title="Open town guide (M)" aria-label="Open town guide"><span>LLAMA TOWN <b>MAP ↗</b></span><canvas width="208" height="208" aria-hidden="true"></canvas><small>● You · Gold = destination</small></button>
   <div class="control-hint hidden" data-controls><kbd>W A S D</kbd> move <kbd>Shift</kbd> sprint <kbd>Space</kbd> jump <kbd>M</kbd> map <kbd>Esc</kbd> pause</div>
+  <div class="adventure-controls hidden" data-adventure>
+    <small data-mode>Explore the city</small>
+    <div class="row">
+      <button class="btn small lilac" data-dance aria-pressed="false" title="Dance (B)">🕺 Dance</button>
+      <button class="btn small sky hidden" data-fly aria-pressed="false" title="Fly / land (F)">🚀 Fly</button>
+      <button class="btn small ghost hidden" data-milk title="Shoot milk (Q)">🥛 Milk</button>
+    </div>
+  </div>
+  <button class="online-status hidden" data-online aria-label="Open multiplayer room"></button>
   <div class="objective hidden" data-objective></div>
   <div class="rent-banner hidden" data-rent></div>
   <div class="toast-area" data-toasts role="status" aria-live="polite"></div>
@@ -76,6 +90,18 @@ try { storage = window.localStorage; } catch { /* Gameplay remains available wit
 let state = loadGame(storage);
 const settings = readSettings(storage, { touch: TOUCH, reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches });
 const world = new World(canvas, { touch: TOUCH });
+const peerView = new PeerView(world);
+const multiplayer = new Multiplayer({
+  onChange: () => queueMicrotask(syncOnline),
+  onPeers: peers => { peerView.set(peers); syncOnline(); },
+  onError: error => {
+    toast(error.message, 'bad');
+    if (overlayRoot.querySelector('[data-room-code]')) {
+      multiplayerPanel();
+      overlayRoot.querySelector('[data-online-error]').textContent = error.message;
+    }
+  },
+});
 world.applySettings(settings);
 document.body.classList.toggle('reduced-motion', settings.reducedMotion);
 let busy = false, stageBusy = false, rent = null, nextRentAt = 0, businessAcc = 0, lastTick = performance.now();
@@ -117,7 +143,7 @@ function syncHUD() {
   if (world.playerMesh.userData.costume !== state.costume || world.bodyColor !== body) { world.bodyColor = body; world.setCostume(state.costume); }
   const assetKey = `${state.asset}|${state.assetColor}|${state.assetStyle}`;
   if (synced.asset !== assetKey) { synced.asset = assetKey; world.setAsset(state.asset, state.assetColor, state.assetStyle); }
-  const stageKey = `${state.stage}|${state.sideQuests.join(',')}`;
+  const stageKey = `${state.stage}|${state.location}|${state.sideQuests.join(',')}|${state.financeQuests.join(',')}`;
   if (synced.stage !== stageKey) { synced.stage = stageKey; world.setStage(state.stage, state); }
   world.setCollectibles(state.collectibles);
   const o = $('[data-objective]'); o.innerHTML = objective(); o.classList.toggle('hidden', !state.started);
@@ -248,9 +274,9 @@ function walletPanel() {
   el.querySelector('[data-save]').onclick = () => { if (dispatch({ type: 'save' })) { toast('Deposited into the Piggy Bank!', 'cash'); walletPanel(); } };
 }
 function wardrobePanel() {
-  const all = ['Street dreamer', 'Fresh streetwear', ...JOBS.map(j => j.costume), 'Lunar billionaire'];
+  const all = ['Street dreamer', ...EXTRA_COSTUMES, 'Fresh streetwear', ...JOBS.map(j => j.costume), 'Lunar billionaire'];
   const el = open(`
-    ${head('Wardrobe', 'Outfits are unlocked by finishing jobs and reaching milestones.')}
+    ${head('Wardrobe', 'New hero skins are free! Superman, Dragon and Cyborg can fly (F). Cyborg shoots milk (Q). Everyone can dance (B).')}
     <div class="card"><div class="choice-grid">${all.map(c => { const has = state.costumes.includes(c), job = JOBS.find(j => j.costume === c); return `<button class="choice ${state.costume === c ? 'selected' : ''}" data-c="${c}" ${has ? '' : 'disabled'}><div class="ico">${icon(has ? (job?.icon || 'shirt') : 'lock')}</div><b>${c}</b><small>${has ? (state.costume === c ? 'Wearing now' : 'Tap to wear') : job ? `Finish a shift at ${job.name}` : c === 'Lunar billionaire' ? 'Reach $1 billion' : 'Buy clothes ($120)'}</small></button>`; }).join('')}</div></div>`);
   el.querySelectorAll('[data-c]').forEach(b => (b.onclick = () => { if (dispatch({ type: 'costume', costume: b.dataset.c })) { sfx('ok'); wardrobePanel(); } }));
 }
@@ -265,6 +291,118 @@ function reportPanel() {
       <div class="ledger">${s.ledger.length ? s.ledger.map(e => `<div><span>${e.label}</span><b class="${e.amount > 0 ? 'pos' : e.amount < 0 ? 'neg' : ''}">${e.amount ? (e.amount > 0 ? '+' : '') + money(e.amount) : '—'}</b></div>`).join('') : '<p class="muted">Nothing yet — go earn your first paycheck!</p>'}</div>
     </div>`);
 }
+
+function financePanel() {
+  const el = open(`${head('Money missions', 'Small challenges for big money skills. Learn, try again, and earn a reward once per mission.')}
+    <div class="card stack"><span class="tag">${state.financeQuests.length} / ${FINANCE_MISSIONS.length} completed</span>
+    <div class="choice-grid">${FINANCE_MISSIONS.map(m => `<button class="choice" data-finance="${m.id}"><b>${state.financeQuests.includes(m.id) ? '✓ ' : ''}${m.title}</b><small>${m.description}</small><span class="tag">${state.financeQuests.includes(m.id) ? 'Review lesson' : `Reward ${money(m.reward)}`}</span></button>`).join('')}</div></div>`);
+  el.querySelectorAll('[data-finance]').forEach(button => button.onclick = () => financeMission(button.dataset.finance));
+}
+
+function financeMission(id) {
+  const mission = FINANCE_MISSIONS.find(m => m.id === id); if (!mission) return;
+  let step = 0;
+  const answers = [], reviewing = state.financeQuests.includes(id);
+  function render() {
+    const question = mission.questions[step];
+    const el = open(`${head(mission.title, `${step + 1} / ${mission.questions.length} · ${reviewing ? 'Practice — reward already earned' : `Reward ${money(mission.reward)}`}`)}
+      <div class="card stack"><h3>${question.prompt}</h3><div class="choice-grid">${question.choices.map((choice, i) => `<button class="choice" data-answer="${i}">${choice}</button>`).join('')}</div>
+      <p class="formula hidden" data-explanation role="status"></p><button class="btn hidden" data-next-question>${step + 1 < mission.questions.length ? 'Next question' : 'Finish mission'}</button>
+      <button class="btn ghost small" data-missions>Back to missions</button></div>`);
+    el.querySelector('[data-missions]').onclick = financePanel;
+    el.querySelectorAll('[data-answer]').forEach(button => button.onclick = () => {
+      const answer = Number(button.dataset.answer), correct = answer === question.answer;
+      const feedback = el.querySelector('[data-explanation]'); feedback.classList.remove('hidden');
+      feedback.textContent = `${correct ? 'Correct! ' : 'Have another try. '}${question.explanation}`;
+      sfx(correct ? 'coin' : 'bad');
+      if (correct) {
+        answers[step] = answer;
+        el.querySelectorAll('[data-answer]').forEach(b => { b.disabled = true; });
+        const next = el.querySelector('[data-next-question]'); next.classList.remove('hidden'); next.focus();
+      }
+    });
+    el.querySelector('[data-next-question]').onclick = () => {
+      if (answers[step] !== question.answer) return;
+      if (++step < mission.questions.length) { render(); return; }
+      if (reviewing) toast('Great practice! You already earned this mission’s reward.', 'ok');
+      else if (dispatch({ type: 'financeQuest', id, answers })) { toast(`${mission.title} complete! +${money(mission.reward)}`, 'cash'); award('Money skills unlocked!', mission.title); }
+      financePanel();
+    };
+  }
+  render();
+}
+
+function travel(location) {
+  if (dispatch({ type: 'travel', location })) {
+    stopRent(); trackedId = null; close(); scheduleRent();
+    toast(location === 'moon' ? 'Welcome back to the Moon! Use the rocket to return to the city.' : 'Welcome back to the city!', 'ok');
+  }
+}
+
+function syncOnline() {
+  const badge = $('[data-online]');
+  badge.classList.toggle('hidden', !multiplayer.room || busy);
+  badge.textContent = multiplayer.room ? `👥 ${multiplayer.room} · ${peerView.peers.size + 1}/8 · ${multiplayer.status === 'connected' ? 'Online' : 'Connecting…'}` : '';
+  const count = overlayRoot.querySelector('[data-room-count]');
+  if (count) count.textContent = `${peerView.peers.size + 1} / 8 players in this room`;
+  const roster = overlayRoot.querySelector('[data-room-roster]');
+  if (roster) {
+    roster.replaceChildren();
+    for (const peer of world.onlinePeers || []) {
+      const entry = document.createElement('li'); entry.textContent = `${peer.name} · ${peer.location === 'moon' ? 'Moon' : 'City'}`; roster.append(entry);
+    }
+  }
+  if (!multiplayer.room) peerView.clear();
+}
+
+function multiplayerPanel() {
+  const connected = !!multiplayer.room;
+  const el = open(`${head('Explore with friends', 'Up to 8 players. Share a room code and explore together from different devices.')}
+    <div class="card stack">
+    ${connected ? `<p class="muted">YOUR ROOM CODE</p><strong class="room-code" data-room-code></strong><p data-room-count></p><ul data-room-roster></ul>
+      <div class="row"><button class="btn sky" data-copy-room>Copy invite link</button><button class="btn coral" data-leave-room>Leave room</button></div><button class="btn" data-close>Back to our adventure</button>` : `
+      <label class="field">Your nickname<input data-online-name maxlength="20" autocomplete="nickname" placeholder="Your name"></label>
+      <button class="btn sky" data-create-room>Create a room</button>
+      <label class="field">Friend’s room code<input data-room-input maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABC123"></label>
+      <button class="btn sage" data-join-room>Join room</button>`}
+    <p data-online-error class="neg" role="status"></p>
+    <p class="muted">Your money and missions stay in your own save. Friends appear when you are in the same place. Use the wardrobe to show off your skins and the Dance button to dance together.</p>
+    </div>`);
+  if (connected) {
+    el.querySelector('[data-room-code]').textContent = multiplayer.room;
+    el.querySelector('[data-copy-room]').onclick = async () => {
+      const url = new URL(location.href); url.searchParams.delete('debug'); url.searchParams.set('room', multiplayer.room);
+      try { await navigator.clipboard.writeText(url.href); toast('Invite link copied!', 'ok'); }
+      catch { el.querySelector('[data-online-error]').textContent = `Share the room code: ${multiplayer.room}`; }
+    };
+    el.querySelector('[data-leave-room]').onclick = async () => { await multiplayer.leave(); peerView.clear(); if (el.isConnected) multiplayerPanel(); };
+    syncOnline();
+  } else {
+    el.querySelector('[data-online-name]').value = CHARACTERS[state.character].name;
+    el.querySelector('[data-room-input]').value = new URLSearchParams(location.search).get('room')?.slice(0, 6) || '';
+    const connect = async create => {
+      const name = el.querySelector('[data-online-name]').value.trim(), code = el.querySelector('[data-room-input]').value.trim().toUpperCase();
+      if (!name) { el.querySelector('[data-online-error]').textContent = 'Choose a nickname first.'; return; }
+      if (!create && !/^[A-Z0-9]{6}$/.test(code)) { el.querySelector('[data-online-error]').textContent = 'Enter your friend’s 6-character room code.'; return; }
+      el.querySelectorAll('[data-create-room], [data-join-room]').forEach(b => { b.disabled = true; });
+      el.querySelector('[data-online-error]').textContent = 'Connecting…';
+      try {
+        if (create) await multiplayer.create(name); else await multiplayer.join(code, name);
+        if (multiplayer.peers.some(peer => peer.location === world.location && Math.hypot(peer.x - world.player.pos.x, peer.z - world.player.pos.z) < 2.5)) {
+          // Friends often start at the same bench. Give the joining player room to see both avatars.
+          world.player.pos.x += world.player.pos.x > 0 ? -3.5 : 3.5;
+          world.resetInput();
+        }
+        if (el.isConnected) multiplayerPanel();
+      } catch (error) {
+        if (el.isConnected) { el.querySelector('[data-online-error]').textContent = error.message; el.querySelectorAll('[data-create-room], [data-join-room]').forEach(b => { b.disabled = false; }); }
+      }
+    };
+    el.querySelector('[data-create-room]').onclick = () => connect(true);
+    el.querySelector('[data-join-room]').onclick = () => connect(false);
+  }
+}
+
 function menuPanel() {
   const el = open(`
     ${head('Take a little breather', 'World and rent chase paused. Your adventure will be right here.')}
@@ -273,6 +411,8 @@ function menuPanel() {
       <p><b>How to play:</b> ${TOUCH ? 'joystick to walk, swipe the right side of the screen to look, and use the big buttons to jump and act.' : 'WASD or arrows to walk, drag the mouse to look around, Space to jump, E to interact.'}</p>
       <p><b>Rent alert:</b> when Mr. Barriga shows up you have 40 seconds to hide in a bush. If he finds you, rent is $200. If he doesn’t, you pocket $500!</p>
       <p><b>Chaos mode:</b> run or jump into the townsfolk llamas to send them flying. It’s free, it’s silly, and it teaches nothing about finance.</p>
+      <p><b>A bigger adventure:</b> find cars, gliders and the beach marina on the map. Use Action / E to enter or leave a vehicle. Fly with F, dance with B, and shoot Cyborg milk with Q. The on-screen buttons work on phones too.</p>
+      <div class="row"><button class="btn sky" data-friends>👥 Play online</button><button class="btn sage" data-money-missions>🎯 Money missions</button>${state.stage === 'freeplay' ? `<button class="btn lilac" data-travel>🚀 ${state.location === 'moon' ? 'Return to the city' : 'Visit the Moon again'}</button>` : ''}</div>
       <div class="row"><button class="btn ghost" data-mute>${icon(state.muted ? 'mute' : 'sound')} Sound ${state.muted ? 'off' : 'on'}</button><button class="btn coral" data-reset>${icon('reset')} New game</button></div>
       <div class="settings-grid">
         <label>Visual quality<select data-quality><option value="high" ${settings.quality === 'high' ? 'selected' : ''}>High · shadows & crisp detail</option><option value="balanced" ${settings.quality === 'balanced' ? 'selected' : ''}>Balanced · smoother on mobile</option></select></label>
@@ -282,6 +422,9 @@ function menuPanel() {
     </div>
     ${gameCredits()}`);
   el.querySelector('[data-mute]').onclick = () => { dispatch({ type: 'mute' }); menuPanel(); };
+  el.querySelector('[data-friends]').onclick = multiplayerPanel;
+  el.querySelector('[data-money-missions]').onclick = financePanel;
+  el.querySelector('[data-travel]')?.addEventListener('click', () => travel(state.location === 'moon' ? 'city' : 'moon'));
   const apply = () => {
     settings.quality = el.querySelector('[data-quality]').value; settings.reducedMotion = el.querySelector('[data-motion]').checked; settings.showMap = el.querySelector('[data-show-map]').checked;
     world.applySettings(settings); document.body.classList.toggle('reduced-motion', settings.reducedMotion);
@@ -297,13 +440,13 @@ function destination() {
     return position ? { id: 'shelter', label: 'Hide in a bush', position, radius: 2.1 } : null;
   }
   const mission = missionFor(state), id = trackedId || mission.id;
-  const target = world.interactables.find(it => it.id === id && world.available(it) && ((it.type === 'moon') === (state.stage === 'moon')) && (it.type !== 'home' || world.plot.visible));
+  const target = world.interactables.find(it => it.id === id && world.available(it) && world.isOnLocation(it) && (it.type !== 'home' || world.plot.visible));
   if (!target && trackedId) { trackedId = null; return destination(); }
   return target;
 }
 function mapPanel() {
   const mission = missionFor(state);
-  const places = world.interactables.filter(it => world.available(it) && ((it.type === 'moon') === (state.stage === 'moon')) && (it.type !== 'home' || world.plot.visible));
+  const places = world.interactables.filter(it => world.available(it) && world.isOnLocation(it) && (it.type !== 'home' || world.plot.visible));
   const el = open(`${head('A town full of possibilities', 'Pick a destination. The golden beacon and compass will guide you there.')}
     <div class="card stack"><button class="btn" data-auto>${icon('sparkles')} Follow my next mission</button><div class="destination-grid">${places.map(it => {
       const job = JOBS.find(j => j.id === it.id), done = !!state.shifts[it.id], distance = Math.round(it.position.distanceTo(world.player.pos));
@@ -437,11 +580,15 @@ function resolveRent(escaped) {
 function stopRent() { if (rent) { clearInterval(rent.timer); rent = null; world.stopRent(); $('[data-rent]').classList.add('hidden'); } }
 world.onJump = () => sfx('jump');
 world.onLand = () => sfx('land');
+world.onNotice = message => { toast(message); if (!busy) canvas.focus({ preventScroll: true }); };
 world.onFound = () => resolveRent(false);
 world.onCoin = id => { if (dispatch({ type: 'coin', id })) toast('Lucky coin! +$25', 'coin'); };
 let bonks = 0;
-world.onBonk = npc => { bonks++; world.burst(npc.pos, 0xc8b4f2, 14); sfx('bonk'); if (bonks === 1) toast('BONK! 🦙💫 Townsfolk llamas go flying when you run into them.'); };
+world.onBonk = npc => { bonks++; world.burst(npc.pos, 0xc8b4f2, 14); sfx('bonk'); if (bonks === 1) toast('BONK! 💫 Townsfolk go flying when you run into them.'); };
 world.available = it => {
+  if (it.type === 'travel') return state.stage === 'freeplay';
+  if (it.type === 'moon') return state.stage === 'moon';
+  if (it.type === 'finance') return !state.financeQuests.includes(it.id);
   if (it.type === 'job') { const job = JOBS.find(j => j.id === it.id); return job.pay === 400 || RENT_STAGES.concat('timeskip', 'moon').includes(state.stage); }
   if (it.type === 'hq') return !!state.company;
   if (it.type === 'quest') return state.stage === 'freeplay' && !state.sideQuests.includes(it.id);
@@ -455,6 +602,9 @@ async function interact() {
   if (busy || !state.started) return;
   const it = world.nearby(); if (!it) return;
   switch (it.type) {
+    case 'vehicle': if (it.id === 'exit-vehicle') world.exitVehicle(); else if (rent) toast('Hide from Mr. Barriga first, then take a ride.'); else world.useVehicle(it.id); break;
+    case 'travel': travel(it.id === 'to-moon' ? 'moon' : 'city'); break;
+    case 'finance': financeMission(it.id); break;
     case 'job': {
       const job = JOBS.find(j => j.id === it.id);
       stopRent(); open('');
@@ -498,6 +648,11 @@ window.addEventListener('keydown', e => {
   if (e.target.closest?.('input, textarea, select, button, [contenteditable="true"]')) return;
   if (e.code === 'KeyE' || e.code === 'Enter') interact();
   if (e.code === 'KeyM' && !busy && state.started) mapPanel();
+  if (!busy && state.started) {
+    if (e.code === 'KeyB') world.toggleDance();
+    if (e.code === 'KeyF') fly();
+    if (e.code === 'KeyQ') world.shootMilk();
+  }
 });
 new MutationObserver(() => {
   const game = overlayRoot.querySelector('.game');
@@ -512,7 +667,12 @@ $('[data-route]').onclick = () => { if (!busy) mapPanel(); };
 $('[data-minimap]').onclick = () => { if (!busy) mapPanel(); };
 $('[data-sprint]').onclick = e => { world.sprint = !world.sprint; e.currentTarget.setAttribute('aria-pressed', String(world.sprint)); };
 $('[data-jump]').addEventListener('pointerdown', () => (world.jumpQueued = true));
-hud.querySelectorAll('[data-open]').forEach(b => { b.setAttribute('aria-label', b.title); b.onclick = () => { if (busy) return; ({ map: mapPanel, wallet: walletPanel, wardrobe: wardrobePanel, report: reportPanel, menu: menuPanel })[b.dataset.open](); }; });
+$('[data-dance]').onclick = () => { if (!busy) world.toggleDance(); };
+function fly() { if (busy) return; if (rent) toast('Hide from Mr. Barriga before taking off.'); else world.toggleFlight(); }
+$('[data-fly]').onclick = fly;
+$('[data-milk]').onclick = () => { if (!busy) { world.shootMilk(); canvas.focus({ preventScroll: true }); } };
+$('[data-online]').onclick = () => { if (!busy) multiplayerPanel(); };
+hud.querySelectorAll('[data-open]').forEach(b => { b.setAttribute('aria-label', b.title); b.onclick = () => { if (busy) return; ({ map: mapPanel, wallet: walletPanel, wardrobe: wardrobePanel, report: reportPanel, menu: menuPanel, finance: financePanel, multiplayer: multiplayerPanel })[b.dataset.open](); }; });
 
 /* Virtual joystick */
 {
@@ -529,10 +689,26 @@ hud.querySelectorAll('[data-open]').forEach(b => { b.setAttribute('aria-label', 
 function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min(0.1, (now - lastTick) / 1000); lastTick = now;
+  if (state.started && multiplayer.room) {
+    const p = world.player.pos;
+    multiplayer.update({ x: p.x, y: p.y, z: p.z, heading: world.player.heading, character: state.character, costume: state.costume, location: world.location, vehicle: world.vehicle?.type || null, dancing: !!world.dancing, flying: !!world.flying });
+  }
   if (document.hidden) return;
   world.update();
+  peerView.update(dt, now / 1000);
   if (!state.started) return;
   const playing = !busy && !hud.classList.contains('hidden');
+  $('[data-online]').classList.toggle('hidden', !playing || !multiplayer.room);
+  $('[data-adventure]').classList.toggle('hidden', !playing);
+  if (playing) {
+    const status = world.getAdventureStatus();
+    $('[data-mode]').textContent = status.label;
+    $('[data-dance]').setAttribute('aria-pressed', String(status.dancing));
+    $('[data-fly]').classList.toggle('hidden', !status.canFly);
+    $('[data-fly]').textContent = status.mode === 'flight' ? '⬇ Land' : '🚀 Fly';
+    $('[data-fly]').setAttribute('aria-pressed', String(status.mode === 'flight'));
+    $('[data-milk]').classList.toggle('hidden', !status.canShoot);
+  }
   $('[data-mission]').classList.toggle('hidden', !playing);
   $('[data-minimap]').classList.toggle('hidden', !playing || !settings.showMap);
   $('[data-controls]').classList.toggle('hidden', !playing || TOUCH);
@@ -563,7 +739,7 @@ function loop(now) {
   actionBtn.textContent = it ? it.label.split(' ').slice(0, 2).join(' ') : 'Action';
   // rent alert
   if (rent) renderRent();
-  else if (!busy && !document.hidden && RENT_STAGES.includes(state.stage) && now > nextRentAt) startRent();
+  else if (!busy && !document.hidden && world.location === 'city' && !world.vehicle && !world.flying && RENT_STAGES.includes(state.stage) && now > nextRentAt) startRent();
   // business income
   if (state.company && ['business', 'moon', 'freeplay'].includes(state.stage) && (!busy || overlayRoot.querySelector('[data-business]'))) {
     businessAcc += dt;
@@ -578,7 +754,7 @@ function loop(now) {
 document.addEventListener('visibilitychange', () => { if (document.hidden) { world.resetInput(); save(); if (state.started && !busy) menuPanel(); } else { lastTick = performance.now(); world.clock.getDelta(); } });
 window.addEventListener('beforeunload', save);
 // Debug hook for testing: open the game with ?debug to get window.__mml
-if (new URLSearchParams(location.search).has('debug')) window.__mml = { world, get state() { return state; }, teleport: (x, z) => world.player.pos.set(x, 0, z), dispatch };
+if (new URLSearchParams(location.search).has('debug')) window.__mml = { world, multiplayer, peerView, get state() { return state; }, teleport: (x, z) => world.player.pos.set(x, 0, z), dispatch };
 syncHUD();
 titleScreen();
 requestAnimationFrame(loop);

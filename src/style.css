@@ -191,6 +191,38 @@ body:not(.touch-device) .touch { display: none; }
   .panel { max-height: calc(100vh - 16px); }
 }
 
+/* Exploration controls stay available for both keyboard and touch players. */
+.adventure-controls { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(58px + var(--safe-bottom)); display: grid; justify-items: center; gap: 6px; z-index: 2; }
+.adventure-controls > small { background: #fffaf0e8; border-radius: 10px; padding: 4px 10px; font-size: 11px; max-width: 330px; text-align: center; }
+.adventure-controls .row { flex-wrap: nowrap; gap: 7px; }
+.adventure-controls .btn[aria-pressed="true"] { background: var(--sun); }
+.online-status { position: absolute; top: calc(12px + var(--safe-top)); left: 50%; transform: translateX(-50%); border: 2px solid var(--ink); border-radius: 20px; background: var(--lilac); font-weight: 700; font-size: 12px; padding: 8px 12px; }
+.room-code { font: 900 clamp(30px, 8vw, 50px) var(--font-display); letter-spacing: .18em; text-align: center; background: var(--lilac); border-radius: 16px; padding: 18px; }
+.field { display: grid; gap: 7px; font-weight: 700; }
+.field input { border: 2px solid var(--ink); border-radius: 12px; padding: 12px; font: inherit; width: 100%; background: white; }
+[data-room-input] { text-transform: uppercase; letter-spacing: .12em; }
+[data-room-roster]:empty { display: none; }
+[data-room-roster] { margin: 0; padding-left: 22px; line-height: 1.7; }
+.control-hint { bottom: 120px; }
+.prompt { bottom: calc(150px + var(--safe-bottom)); }
+@media (max-width: 760px) {
+  .online-status { top: calc(79px + var(--safe-top)); left: 10px; transform: none; font-size: 10px; padding: 4px 8px; }
+  .adventure-controls { bottom: calc(135px + var(--safe-bottom)); left: 12px; transform: none; justify-items: start; }
+  .adventure-controls .btn { font-size: 12px; padding: 6px 10px; min-height: 42px; }
+  .adventure-controls > small { max-width: 220px; }
+  .minimap { bottom: calc(228px + var(--safe-bottom)); width: 105px; }
+  .prompt, body.touch-device .prompt { bottom: calc(213px + var(--safe-bottom)); max-width: calc(100vw - 24px); white-space: normal; text-align: center; justify-content: center; font-size: 12px; }
+  body.touch-device .hud-actions { top: calc(100px + var(--safe-top)); gap: 5px; }
+  body.touch-device .hud-actions .btn.icon { width: 38px; height: 38px; min-height: 38px; }
+}
+@media (max-height: 480px) and (orientation: landscape) {
+  .adventure-controls { bottom: 16px; left: 50%; transform: translateX(-50%); justify-items: center; }
+  .adventure-controls > small { display: none; }
+  .online-status { top: 73px; left: auto; right: 15px; transform: none; }
+  body.touch-device .hud-actions { top: 12px; right: 175px; }
+  .prompt, body.touch-device .prompt { bottom: 76px; }
+}
+
 /* Adventure HUD: clear goals, a readable town guide, and room for the world. */
 .hud > .hud-spacer { pointer-events: none; }
 .objective { display: none !important; }

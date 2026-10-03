@@ -22,15 +22,19 @@ export function celebrate(root, title, detail, reducedMotion = false) {
 
 export function drawMap(canvas, world, target, state, rent) {
   const ctx = canvas.getContext('2d'); if (!ctx) return;
-  const size = canvas.width, scale = size / 104, center = size / 2;
-  const point = p => [center + p.x * scale, center + p.z * scale];
+  const onMoon = world.location === 'moon';
+  const size = canvas.width, span = onMoon ? 104 : 210, scale = size / span, center = size / 2;
+  const offsetX = 0;
+  const point = p => [center + (p.x - offsetX) * scale, center + p.z * scale];
   ctx.clearRect(0, 0, size, size);
-  ctx.fillStyle = world.stage === 'moon' ? '#23263f' : '#deebcf'; ctx.fillRect(0, 0, size, size);
-  if (world.stage !== 'moon') {
+  ctx.fillStyle = onMoon ? '#23263f' : '#deebcf'; ctx.fillRect(0, 0, size, size);
+  if (!onMoon) {
+    ctx.fillStyle = '#eed8a3'; ctx.fillRect(point({ x: 55, z: 0 })[0], 0, size, size);
+    ctx.fillStyle = '#6bbbd5'; ctx.fillRect(point({ x: 67, z: 0 })[0], 0, size, size);
     ctx.strokeStyle = '#b0b2ab'; ctx.lineWidth = 6 * scale;
-    for (const [x, z] of [[0, 0], [-22, -24], [22, 24]]) {
-      ctx.beginPath(); ctx.moveTo(center + x * scale, 6); ctx.lineTo(center + x * scale, size - 6); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(6, center + z * scale); ctx.lineTo(size - 6, center + z * scale); ctx.stroke();
+    for (const [x, z] of [[0, 0], [-22, -24], [22, 24], [-60, -60], [-40, -38], [40, 38], [60, 60]]) {
+      ctx.beginPath(); ctx.moveTo(point({ x, z: 0 })[0], 6); ctx.lineTo(point({ x, z: 0 })[0], size - 6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(6, center + z * scale); ctx.lineTo(point({ x: 60, z: 0 })[0], center + z * scale); ctx.stroke();
     }
   }
   if (target) {
@@ -39,23 +43,27 @@ export function drawMap(canvas, world, target, state, rent) {
     ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(tx, ty); ctx.stroke(); ctx.setLineDash([]);
   }
   for (const it of world.interactables) {
-    if ((it.type === 'moon') !== (world.stage === 'moon') || !world.available(it)) continue;
+    if (!world.isOnLocation(it) || !world.available(it)) continue;
     if (it.type === 'home' && !world.plot.visible) continue;
     const [x, y] = point(it.position), selected = it.id === target?.id;
     const jobIndex = JOBS.findIndex(j => j.id === it.id);
-    ctx.fillStyle = selected ? '#ffd94d' : state.shifts[it.id] ? '#45945b' : '#fffaf0';
+    ctx.fillStyle = selected ? '#ffd94d' : state.shifts[it.id] || state.financeQuests?.includes(it.id) ? '#45945b' : it.type === 'vehicle' ? '#c8b4f2' : it.type === 'finance' ? '#ffb37a' : '#fffaf0';
     ctx.strokeStyle = '#2b2a33'; ctx.lineWidth = selected ? 2.5 : 1;
-    ctx.beginPath(); ctx.arc(x, y, selected ? 8 : 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, selected ? 7 : 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     if (jobIndex >= 0) { ctx.fillStyle = '#2b2a33'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center'; ctx.fillText(String(jobIndex + 1), x, y + 3); }
   }
-  if (rent && world.stage !== 'moon') {
+  if (rent && !onMoon) {
     ctx.fillStyle = '#43885b';
     world.hiding.forEach(p => { const [x, y] = point(p); ctx.fillRect(x - 3, y - 3, 6, 6); });
     const [x, y] = point(world.barriga.position); ctx.fillStyle = '#de4d48'; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+  }
+  for (const peer of world.onlinePeers || []) {
+    if (peer.location !== world.location) continue;
+    const [x, y] = point(peer); ctx.fillStyle = '#8356bd'; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
   }
   const [x, y] = point(world.player.pos);
   ctx.save(); ctx.translate(x, y); ctx.rotate(-world.yaw);
   ctx.fillStyle = '#2b2a33'; ctx.strokeStyle = '#fffaf0'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(6, 6); ctx.lineTo(0, 3); ctx.lineTo(-6, 6); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
-  ctx.fillStyle = world.stage === 'moon' ? '#fffaf0' : '#2b2a33'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.fillText('N', center, 13);
+  ctx.fillStyle = onMoon ? '#fffaf0' : '#2b2a33'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.fillText('N', center, 13);
 }

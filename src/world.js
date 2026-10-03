@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { movementInput } from './experience.js';
 import { JOBS } from './model.js';
+import { buildAvatar } from './avatars.js';
+import { buildCityExpansion, constrainAdventurePosition, CITY_LIMIT } from './world-expansion.js';
 
 const PALETTE = { peach: 0xffb37a, sage: 0x9dd39a, lilac: 0xc8b4f2, sky: 0x8fd4ff, sun: 0xffd94d, coral: 0xff6b6b, ink: 0x2b2a33, cream: 0xf7f2e4, wood: 0xb58a5a, gold: 0xf6b53d, white: 0xfffaf0 };
 const COIN_SPOTS = [[-4, -18], [6, 4], [-18, 2], [22, -4], [3, -26], [-26, -8], [12, 20], [-8, 22], [26, 12], [-24, 16], [0, -6], [18, -12]];
@@ -50,6 +52,7 @@ function disposeGroup(group) {
 
 /* ---------- Characters ---------- */
 export function buildLlama(bodyColor = 0xfff1d6, costume = 'Street dreamer') {
+  const avatar = buildAvatar(costume, bodyColor); if (avatar) return avatar;
   const g = new THREE.Group();
   const furColor = costume === 'Spider-Llama' ? 0xe63946 : costume === 'Lunar billionaire' ? 0xd7dde8 : bodyColor;
   const fur = mat(furColor), dark = mat(PALETTE.ink), white = mat(PALETTE.white), pink = mat(0xffb3c6);
@@ -306,7 +309,9 @@ export class World {
     this.obstacles = []; this.interactables = []; this.coins = new Map(); this.onCoin = () => {}; this.frozen = false;
     this.barriga = null; this.rentActive = false; this.onFound = () => {};
     this.clock = new THREE.Clock(); this.time = 0; this.available = () => true;
-    this.stage = 'beginning';
+    this.stage = 'beginning'; this.location = 'city'; this.worldRadius = CITY_LIMIT;
+    this.vehicle = null; this.flying = false; this.dancing = false; this.onNotice = () => {};
+    this.milkShots = []; this.lastMilkShot = -10;
     this.#buildScene();
     this.#buildEffects();
     this.#bindInput();
@@ -321,7 +326,7 @@ export class World {
     Object.assign(this.sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, far: 140 }); this.sun.shadow.mapSize.set(2048, 2048); this.sun.shadow.bias = -0.0005; scene.add(this.sun);
     this.city = new THREE.Group(); scene.add(this.city);
     this.moon = new THREE.Group(); this.moon.visible = false; scene.add(this.moon);
-    const ground = mesh(new THREE.CircleGeometry(80, 48), mat(0x9dd39a)); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; this.city.add(ground);
+    const ground = mesh(new THREE.CircleGeometry(104, 64), mat(0x9dd39a)); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; this.city.add(ground);
     const road = mat(0x7d7f8c);
     for (const [w, h, x, z] of [[70, 6, 0, 0], [6, 70, 0, 0], [70, 5, 0, -24], [5, 70, -22, 0], [5, 70, 22, 0], [70, 5, 0, 24]]) { const r = mesh(new THREE.PlaneGeometry(w, h), road, x, 0.02, z, false); r.rotation.x = -Math.PI / 2; r.receiveShadow = true; this.city.add(r); }
     const plaza = mesh(new THREE.CircleGeometry(7, 24), mat(0xe8d3a8), 0, 0.03, 0, false); plaza.rotation.x = -Math.PI / 2; this.city.add(plaza);
@@ -409,7 +414,8 @@ export class World {
     const earth = mesh(new THREE.SphereGeometry(6, 24, 20), mat(0x3c8dd6, { emissive: 0x1d4f8a, emissiveIntensity: 0.5 }), -30, 26, -60, false); this.moon.add(earth); this.moon.add(mesh(new THREE.SphereGeometry(6.05, 24, 20), mat(0x7cc46e, { transparent: true, opacity: 0.6 }), -30, 26, -60, false));
     const rocket = new THREE.Group(); rocket.position.set(10, 0, -6); rocket.add(mesh(new THREE.CylinderGeometry(1, 1.2, 6, 14), mat(PALETTE.white), 0, 3.5, 0)); rocket.add(mesh(new THREE.ConeGeometry(1, 2, 14), mat(PALETTE.coral), 0, 7.5, 0)); for (let i = 0; i < 3; i++) rocket.add(mesh(new THREE.BoxGeometry(0.3, 1.6, 1.4), mat(PALETTE.coral), Math.cos(i * 2.1) * 1.3, 0.8, Math.sin(i * 2.1) * 1.3)); this.moon.add(rocket);
     const stars = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: 900 }, (_, i) => (rnd(i, 11 + (i % 3)) - 0.5) * 240), 3)), new THREE.PointsMaterial({ color: 0xffffff, size: 0.6 })); this.moon.add(stars);
-    this.interactables.push({ id: 'moonhouse', type: 'moon', label: 'Sign the Moon deal with Elo Musk', position: new THREE.Vector3(0, 0, -7), radius: 4 });
+    this.interactables.push({ id: 'moonhouse', type: 'moon', label: 'Sign the Moon deal with Elo Musk', position: new THREE.Vector3(0, 0, -7), radius: 4, location: 'moon' });
+    buildCityExpansion(this, { mat, mesh, building, car, tree, sign });
   }
   #bindInput() {
     window.addEventListener('keydown', e => {
@@ -480,17 +486,106 @@ export class World {
   setCostume(name) {
     const { pos } = this.player; const heading = this.playerMesh.rotation.y;
     this.scene.remove(this.playerMesh); disposeGroup(this.playerMesh); this.playerMesh = buildLlama(this.bodyColor ?? 0xfff1d6, name); this.playerMesh.position.copy(pos); this.playerMesh.rotation.y = heading; this.scene.add(this.playerMesh);
+    if (!this.getAdventureStatus().canFly) this.flying = false;
+    this.dancing = false;
+  }
+  getAdventureStatus() {
+    const costume = this.playerMesh.userData.costume;
+    const canFly = ['Superman', 'Cyborg', 'Dragon'].includes(costume);
+    const mode = this.vehicle?.type || (this.flying ? 'flight' : this.dancing ? 'dance' : 'walk');
+    return { mode, label: { car: 'Driving', boat: 'Sailing a boat', yacht: 'Sailing a yacht', glider: 'Gliding', flight: 'Flying', dance: 'Dancing', walk: 'Exploring' }[mode], canFly, canShoot: costume === 'Cyborg', dancing: this.dancing, vehicle: this.vehicle?.type || null };
+  }
+  createVehicleMesh(type) {
+    const source = [...this.vehicles.values()].find(vehicle => vehicle.type === type);
+    if (!source) return null;
+    const copy = source.mesh.clone(true); copy.position.set(0, 0, 0); copy.rotation.set(0, 0, 0); return copy;
+  }
+  useVehicle(id) {
+    if (id === 'exit-vehicle') return this.exitVehicle();
+    const vehicle = this.vehicles.get(id);
+    if (!vehicle || this.frozen || this.location !== 'city' || this.vehicle) return false;
+    const it = this.interactables.find(item => item.id === id);
+    if (this.player.pos.distanceTo(it.position) > it.radius + 0.5) return false;
+    this.vehicle = vehicle; this.flying = false; this.dancing = false; this.resetInput();
+    this.player.pos.copy(vehicle.mesh.position); this.player.vy = 0; this.player.heading = vehicle.heading;
+    if (vehicle.type === 'glider') { this.player.pos.y = 19; this.player.grounded = false; }
+    else this.player.grounded = true;
+    this.onNotice(vehicle.type === 'glider' ? 'Glider launched! Use your movement controls to steer. Land automatically.' : `${vehicle.label}. Use your movement controls and Action to exit.`);
+    return true;
+  }
+  exitVehicle(notify = true) {
+    const vehicle = this.vehicle; if (!vehicle) return false;
+    const sailing = ['boat', 'yacht'].includes(vehicle.type);
+    if (sailing) {
+      vehicle.mesh.position.copy(vehicle.spawn); vehicle.position.copy(vehicle.dock);
+      this.player.pos.copy(vehicle.dock); this.player.pos.x -= 1;
+    } else if (vehicle.type === 'glider') {
+      // Gliders are reusable launch points; the rider keeps the landing position.
+      vehicle.mesh.position.copy(vehicle.spawn); vehicle.mesh.rotation.set(0, 0, 0); vehicle.position.copy(vehicle.spawn);
+    } else {
+      vehicle.position.copy(vehicle.mesh.position); this.player.pos.z += 2.8;
+    }
+    this.vehicle = null; this.playerMesh.scale.setScalar(1); this.playerMesh.rotation.x = this.playerMesh.rotation.z = 0;
+    this.player.vy = Math.min(0, this.player.vy); this.player.grounded = this.player.pos.y <= 0;
+    constrainAdventurePosition(this.player.pos, { location: this.location, airborne: this.player.pos.y > 3 }); this.resetInput();
+    if (notify) this.onNotice(sailing ? 'Back at the dock. Your boat is ready for another trip!' : 'You left the vehicle.');
+    return true;
+  }
+  toggleFlight() {
+    if (this.frozen || this.vehicle) return false;
+    if (!this.getAdventureStatus().canFly) { this.onNotice('Wear Superman, Cyborg or Dragon to fly.'); return false; }
+    this.flying = !this.flying; this.dancing = false; this.player.grounded = false; this.player.vy = 0;
+    this.onNotice(this.flying ? 'Flight on! Use your movement controls. Tap Fly again to land.' : 'Landing…'); return true;
+  }
+  toggleDance() {
+    if (this.frozen || this.vehicle || this.flying || !this.player.grounded) return false;
+    this.dancing = !this.dancing; this.onNotice(this.dancing ? 'Dance time! Move to stop.' : 'Dance stopped.'); return true;
+  }
+  shootMilk() {
+    if (this.frozen || this.vehicle || !this.getAdventureStatus().canShoot || this.time - this.lastMilkShot < 0.28) return false;
+    this.lastMilkShot = this.time;
+    const direction = new THREE.Vector3(Math.sin(this.player.heading), 0, Math.cos(this.player.heading));
+    const projectile = mesh(new THREE.SphereGeometry(0.18, 8, 6), mat(0xfffaf0, { emissive: 0xffffff, emissiveIntensity: 0.2 }), 0, 0, 0, false);
+    projectile.position.copy(this.player.pos).addScaledVector(direction, 1.8); projectile.position.y += 1.8;
+    this.scene.add(projectile); this.milkShots.push({ mesh: projectile, velocity: direction.multiplyScalar(28), life: 1.35, location: this.location });
+    this.burst(projectile.position, 0xfffaf0, 3); return true;
+  }
+  clearMilkShots() {
+    for (const shot of this.milkShots) { this.scene.remove(shot.mesh); disposeGroup(shot.mesh); }
+    this.milkShots.length = 0;
+  }
+  #updateMilk(dt) {
+    for (let i = this.milkShots.length - 1; i >= 0; i--) {
+      const shot = this.milkShots[i]; shot.life -= dt; shot.mesh.position.addScaledVector(shot.velocity, dt);
+      if (shot.location === 'city') for (const npc of this.npcs) {
+        if (npc.state === 'fly' || shot.mesh.position.distanceTo(npc.pos.clone().add(new THREE.Vector3(0, 1.5, 0))) > 1.1) continue;
+        npc.state = 'dazed'; npc.timer = 1.2; npc.speed = 0; this.burst(shot.mesh.position, 0xfffaf0, 16); shot.life = 0; break;
+      }
+      if (shot.life <= 0) { this.scene.remove(shot.mesh); disposeGroup(shot.mesh); this.milkShots.splice(i, 1); }
+    }
   }
   setAsset(asset, color, style) {
+    const ownedCar = this.vehicles.get('car-owned');
+    if (ownedCar) {
+      if (this.vehicle === ownedCar) this.exitVehicle(false);
+      this.city.remove(ownedCar.mesh); disposeGroup(ownedCar.mesh); this.vehicles.delete('car-owned');
+      this.interactables = this.interactables.filter(it => it.id !== 'car-owned');
+    }
     disposeGroup(this.assetGroup);
     this.assetGroup.clear();
     if (asset) this.plotSign.material.map?.dispose();
-    if (asset === 'car') { const c = car(new THREE.Color(color), style); c.rotation.y = 0.4; this.assetGroup.add(c); this.plotSign.material.map = textTexture('MY FIRST CAR', '#fffaf0'); }
+    if (asset === 'car') {
+      const c = car(new THREE.Color(color), style); c.rotation.y = 0.4; c.position.copy(this.plot.position); this.city.add(c);
+      const position = c.position.clone(), id = 'car-owned', label = 'Drive your own car';
+      this.vehicles.set(id, { id, type: 'car', mesh: c, spawn: position.clone(), position, heading: 0.4 + Math.PI / 2, label });
+      this.interactables.push({ id, type: 'vehicle', vehicleType: 'car', label, position, radius: 3.5, location: 'city' });
+      this.plotSign.material.map = textTexture('MY FIRST CAR', '#fffaf0');
+    }
     else if (asset === 'house') { this.assetGroup.add(house(new THREE.Color(color), style)); this.plotSign.material.map = textTexture('HOME SWEET HOME', '#fffaf0'); }
     this.plotSign.material.needsUpdate = true;
   }
   setStage(stage, state) {
-    const previousStage = this.stage;
+    const previousStage = this.stage, previousLocation = this.location;
     this.stage = stage;
     const advanced = ['careers', 'timeskip', 'robbery', 'business', 'moon', 'freeplay'].includes(stage);
     for (const it of this.interactables) if (it.type === 'job' && it.group.userData.closed) it.group.userData.closed.visible = JOBS.find(j => j.id === it.id).pay === 900 && !advanced;
@@ -504,11 +599,16 @@ export class World {
     if (this.mansionGroup) { this.mansionGroup.visible = rich; this.plot.visible = !rich && !!state?.asset || stage === 'purchase' || stage === 'beginning'; }
     this.girlfriend.visible = rich; this.girlfriend.position.set(4, 0, 25); this.girlfriend.rotation.y = Math.PI / 2;
     this.hqGroup.visible = ['business', 'moon', 'freeplay'].includes(stage); this.hqObstacle.r = this.hqGroup.visible ? 4.4 : 0;
-    const onMoon = stage === 'moon';
+    this.location = state?.location || (stage === 'moon' ? 'moon' : 'city');
+    const onMoon = this.location === 'moon';
     this.moon.visible = onMoon; this.city.visible = !onMoon;
-    this.scene.background.set(onMoon ? 0x0b0d1a : PALETTE.sky); this.scene.fog.color.set(onMoon ? 0x0b0d1a : PALETTE.sky); this.scene.fog.near = onMoon ? 90 : 60;
+    this.scene.background.set(onMoon ? 0x0b0d1a : PALETTE.sky); this.scene.fog.color.set(onMoon ? 0x0b0d1a : PALETTE.sky); this.scene.fog.near = onMoon ? 90 : 72; this.scene.fog.far = onMoon ? 160 : 185;
     this.hemi.intensity = onMoon ? 0.5 : 1.1; this.hemi.groundColor.set(onMoon ? 0x444a66 : 0x9dd39a);
-    if (onMoon) { this.player.pos.set(0, 0, 6); this.girlfriend.visible = true; this.girlfriend.position.set(3, 0, 2); this.girlfriend.rotation.y = Math.PI; }
+    if (onMoon) { this.girlfriend.visible = true; this.girlfriend.position.set(3, 0, 2); this.girlfriend.rotation.y = Math.PI; }
+    if (previousLocation !== this.location) {
+      this.exitVehicle(false); this.flying = false; this.dancing = false; this.clearMilkShots(); this.resetInput();
+      this.player.pos.set(onMoon ? 0 : 32, 0, onMoon ? 6 : 40); this.player.vy = 0; this.player.grounded = true;
+    }
     if (stage === 'robbery' && previousStage !== stage) {
       this.player.pos.set(0, 0, 18); this.player.heading = 0; this.playerMesh.rotation.y = -Math.PI / 2;
       this.yaw = Math.PI; this.pitch = 0.35; this.resetInput();
@@ -518,13 +618,16 @@ export class World {
     }
     for (const id of ['picnic', 'explorer', 'helper']) this.questMarkers[id].visible = stage === 'freeplay' && !state?.sideQuests?.includes(id);
     this.bbq.visible = stage === 'freeplay';
+    for (const it of this.interactables) if (it.type === 'finance' && it.group) it.group.visible = !state?.financeQuests?.includes(it.id);
   }
   setCollectibles(ids) { for (const [id, c] of this.coins) c.visible = !ids.includes(id); }
   get playerPosition() { return this.player.pos; }
+  isOnLocation(it) { return (it.location || (it.type === 'moon' ? 'moon' : 'city')) === (this.location || (this.stage === 'moon' ? 'moon' : 'city')); }
   nearby() {
+    if (this.vehicle) return { id: 'exit-vehicle', type: 'vehicle', label: ['boat', 'yacht'].includes(this.vehicle.type) ? 'Return to the dock' : 'Exit the vehicle', position: this.player.pos, radius: 3, location: this.location };
     let best = null, bestD = Infinity;
     for (const it of this.interactables) {
-      if (it.type === 'moon' ? this.stage !== 'moon' : this.stage === 'moon') continue;
+      if (!World.prototype.isOnLocation.call(this, it)) continue;
       if (it.type === 'home' && !this.plot.visible) continue;
       if (it.approachDirection && this.player.pos.clone().sub(it.position).dot(it.approachDirection) < 0) continue;
       const d = it.position.distanceTo(this.player.pos);
@@ -550,11 +653,13 @@ export class World {
     if (!hidden && b.position.distanceTo(this.player.pos) < 2.6) { this.onFound(); }
   }
   #roam(npc) {
-    const a = Math.random() * Math.PI * 2, r = 6 + Math.random() * 30;
-    npc.target.set(Math.cos(a) * r, 0, Math.sin(a) * r); npc.timer = 4 + Math.random() * 6;
+    const a = Math.random() * Math.PI * 2, r = npc.roamRadius ? Math.random() * npc.roamRadius : 6 + Math.random() * 30;
+    npc.target.set((npc.home?.x || 0) + Math.cos(a) * r, 0, (npc.home?.z || 0) + Math.sin(a) * r);
+    if (npc.beach) npc.target.x = THREE.MathUtils.clamp(npc.target.x, 59, 63);
+    constrainAdventurePosition(npc.target); npc.timer = 4 + Math.random() * 6;
   }
   #updateNpcs(dt) {
-    if (this.stage === 'moon') return;
+    if (this.location === 'moon') return;
     const p = this.player;
     for (const npc of this.npcs) {
       const { mesh: m } = npc;
@@ -572,11 +677,12 @@ export class World {
         for (const o of this.obstacles) { const dx = npc.pos.x - o.x, dz = npc.pos.z - o.z, dd = Math.hypot(dx, dz); if (dd < o.r + 0.6 && dd > 0.001) { const push = (o.r + 0.6 - dd) / dd; npc.pos.x += dx * push; npc.pos.z += dz * push; } }
         // bonk: run or land on a townsfolk llama and it goes flying
         const dx = npc.pos.x - p.pos.x, dz = npc.pos.z - p.pos.z, dist = Math.hypot(dx, dz);
-        if (dist < 1.7 && (p.speed > 5.5 || (!p.grounded && p.vy < -2))) {
+        if (dist < 1.7 && Math.abs(npc.pos.y - p.pos.y) < 2.5 && (p.speed > 5.5 || (!p.grounded && p.vy < -2))) {
           npc.state = 'fly'; npc.vy = 8 + Math.random() * 3; npc.spin = 0; npc.dir = new THREE.Vector3(dx, 0, dz).normalize(); this.onBonk(npc);
         } else if (dist > 0.001 && dist < 1.4) { npc.pos.x += (dx / dist) * (1.4 - dist); npc.pos.z += (dz / dist) * (1.4 - dist); }
       }
       const swing = Math.sin(this.time * 12 + npc.pos.x) * 0.5 * (npc.speed / 2.4);
+      constrainAdventurePosition(npc.pos);
       m.userData.legs.forEach((l, i) => (l.rotation.z = swing * (i % 2 ? -1 : 1) * (i < 2 ? 1 : -1)));
       m.position.copy(npc.pos);
     }
@@ -586,44 +692,81 @@ export class World {
     const p = this.player;
     const input = movementInput(this.keys, this.joy, this.yaw);
     const sprinting = !this.frozen && (this.sprint || this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) && input.amount > 0;
-    const topSpeed = sprinting ? 11.5 : 7.5;
-    const targetVelocity = new THREE.Vector3(input.x * topSpeed, 0, input.z * topSpeed);
+    const riding = this.vehicle, gliding = riding?.type === 'glider';
+    const sailing = ['boat', 'yacht'].includes(riding?.type);
+    const topSpeed = riding ? { car: 19, boat: 15, yacht: 11, glider: 14 }[riding.type] : this.flying ? 16 : sprinting ? 11.5 : 7.5;
+    const targetVelocity = gliding && !input.amount
+      ? new THREE.Vector3(Math.sin(p.heading) * topSpeed, 0, Math.cos(p.heading) * topSpeed)
+      : new THREE.Vector3(input.x * topSpeed, 0, input.z * topSpeed);
+    if (input.amount > 0 || this.jumpQueued) this.dancing = false;
     if (this.frozen) this.velocity.set(0, 0, 0);
-    else this.velocity.lerp(targetVelocity, 1 - Math.exp(-18 * dt));
+    else this.velocity.lerp(targetVelocity, 1 - Math.exp(-(riding ? 5 : 18) * dt));
     p.pos.addScaledVector(this.velocity, dt);
     if (this.velocity.lengthSq() > 0.01) p.heading = Math.atan2(this.velocity.x, this.velocity.z);
     p.speed = this.velocity.length();
     if (this.jumpQueued) this.jumpBuffer = 0.15;
     else this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
-    if (this.jumpBuffer > 0 && p.grounded && !this.frozen) { p.vy = 8.5; p.grounded = false; this.jumpBuffer = 0; this.burst(p.pos, 0xfffaf0, 8); this.onJump(); }
+    if (this.jumpBuffer > 0 && p.grounded && !this.frozen && !riding && !this.flying) { p.vy = 8.5; p.grounded = false; this.jumpBuffer = 0; this.burst(p.pos, 0xfffaf0, 8); this.onJump(); }
     this.jumpQueued = false;
     if (!this.frozen) {
-      p.vy -= (this.stage === 'moon' ? 11 : 22) * dt; p.pos.y = Math.max(0, p.pos.y + p.vy * dt);
+      if (this.flying) { p.pos.y += (16 - p.pos.y) * (1 - Math.exp(-2.5 * dt)); p.vy = 0; p.grounded = false; }
+      else if (riding && !gliding) { p.pos.y = 0; p.vy = 0; p.grounded = true; }
+      else {
+        p.vy = gliding ? -1.5 : p.vy - (this.location === 'moon' ? 11 : 22) * dt;
+        p.pos.y = Math.max(0, p.pos.y + p.vy * dt);
+      }
       if (p.pos.y === 0) { if (!p.grounded) { this.burst(p.pos, 0xfffaf0, 12); this.onLand(); } p.vy = 0; p.grounded = true; }
     }
     // bounds + obstacles
-    const limit = this.stage === 'moon' ? 40 : 46; const r = Math.hypot(p.pos.x, p.pos.z); if (r > limit) { p.pos.x *= limit / r; p.pos.z *= limit / r; }
-    if (this.stage !== 'moon') for (const o of this.obstacles) { const dx = p.pos.x - o.x, dz = p.pos.z - o.z, d = Math.hypot(dx, dz); if (d < o.r + 0.6 && d > 0.001) { const push = (o.r + 0.6 - d) / d; p.pos.x += dx * push; p.pos.z += dz * push; } }
+    constrainAdventurePosition(p.pos, { location: this.location, vehicle: riding, airborne: p.pos.y > 3 });
+    if (this.location !== 'moon' && !sailing) for (const o of this.obstacles) {
+      if (o.r <= 0 || p.pos.y > (o.height || 10)) continue;
+      const dx = p.pos.x - o.x, dz = p.pos.z - o.z, d = Math.hypot(dx, dz), radius = o.r + (riding?.type === 'car' ? 1.4 : 0.6);
+      if (d < radius) { if (d > 0.001) { const push = (radius - d) / d; p.pos.x += dx * push; p.pos.z += dz * push; } else p.pos.x += radius; }
+    }
+    constrainAdventurePosition(p.pos, { location: this.location, vehicle: riding, airborne: p.pos.y > 3 });
+    if (riding) {
+      riding.mesh.position.copy(p.pos); riding.heading = p.heading;
+      riding.mesh.rotation.y = p.heading - Math.PI / 2;
+      riding.mesh.rotation.z = sailing && !this.reducedMotion ? Math.sin(this.time * 2) * 0.035 : 0;
+      if (!sailing && !gliding) riding.position.copy(p.pos);
+      if (gliding && p.grounded) { this.exitVehicle(false); this.onNotice('Smooth landing! Find more gliders around the city.'); }
+    }
     // animate player
     const m = this.playerMesh; m.position.copy(p.pos);
+    m.scale.setScalar(this.vehicle && !gliding ? 0.65 : 1);
+    if (this.vehicle && !gliding) m.position.y += sailing ? this.vehicle.type === 'yacht' ? 3 : 1.45 : 1.2;
     let target = p.heading - Math.PI / 2; let diff = target - m.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); m.rotation.y += diff * Math.min(1, dt * 12);
-    const { legs, body, head } = m.userData; const swing = Math.sin(this.time * 14) * 0.6 * (p.speed / 7.5);
+    const { legs, body, head } = m.userData; const swing = Math.sin(this.time * 14) * 0.6 * (this.vehicle || this.flying ? 0 : p.speed / 7.5);
     legs.forEach((l, i) => (l.rotation.z = swing * (i % 2 ? -1 : 1) * (i < 2 ? 1 : -1)));
     body.position.y = (head ? 0 : 0) + Math.abs(Math.sin(this.time * 14)) * 0.08 * (p.speed / 7.5) + (m.userData.costume === 'Grand hotel concierge' ? 0.55 : 0);
     head.rotation.z = Math.sin(this.time * 2) * 0.05;
+    m.rotation.z = this.flying ? -0.13 : 0;
+    if (this.dancing && !this.reducedMotion) {
+      body.position.y += Math.abs(Math.sin(this.time * 9)) * 0.4;
+      m.rotation.y += Math.sin(this.time * 5) * 0.08; m.rotation.z = Math.sin(this.time * 9) * 0.12;
+      legs.forEach((leg, i) => { leg.rotation.z = Math.sin(this.time * 9 + i * Math.PI) * 0.65; });
+      head.rotation.z = Math.sin(this.time * 5) * 0.2;
+    }
+    for (const thruster of m.userData.thrusters || []) thruster.visible = this.flying;
+    for (const [i, arm] of (m.userData.arms || []).entries()) {
+      arm.rotation.z = this.dancing && !this.reducedMotion ? Math.sin(this.time * 9 + i * Math.PI) * 1.1 : this.flying ? -1.1 : swing * (i ? -1 : 1) * 0.7;
+    }
+    for (const [i, wing] of (m.userData.wings || []).entries()) wing.rotation.x = Math.sin(this.time * (this.flying ? 8 : 2)) * (this.flying ? 0.45 : 0.08) * (i ? -1 : 1);
     // friends / decor
     if (this.girlfriend.visible) this.girlfriend.userData.head.rotation.z = Math.sin(this.time * 1.5) * 0.08;
     for (const [, c] of this.coins) { c.rotation.z += dt * 2.5; c.position.y = 1 + Math.sin(this.time * 3 + c.position.x) * 0.15; }
-    for (const [id, c] of this.coins) if (!this.frozen && this.stage !== 'moon' && c.visible && c.position.distanceTo(p.pos) < 1.8) { this.burst(c.position, 0xffd94d, 22); c.visible = false; this.onCoin(id); }
+    for (const [id, c] of this.coins) if (!this.frozen && this.location !== 'moon' && c.visible && c.position.distanceTo(p.pos) < 1.8) { this.burst(c.position, 0xffd94d, 22); c.visible = false; this.onCoin(id); }
     for (const c of this.clouds) { c.position.x += dt * 0.6; if (c.position.x > 70) c.position.x = -70; }
     for (const q of Object.values(this.questMarkers)) if (q.visible) { q.userData.star.rotation.y += dt * 2; q.userData.star.position.y = 4 + Math.sin(this.time * 2) * 0.3; }
     this.#updateBarriga(dt);
-    if (!this.frozen) this.#updateNpcs(dt);
+    if (!this.frozen) { this.#updateNpcs(dt); this.#updateMilk(dt); }
     this.#updateEffects(dt);
-    if (this.stage !== 'moon') this.fountainDrops.forEach((drop, i) => { const t = ((this.reducedMotion ? 0 : this.time * 0.65) + i / 24) % 1, a = i * 2.4; drop.position.set(Math.cos(a) * t * 1.3, 0.85 + Math.sin(t * Math.PI) * 2.1, Math.sin(a) * t * 1.3); });
+    if (this.location !== 'moon') this.waveLines.forEach((wave, i) => { wave.position.x = 68 + (i % 4) * 6 + (this.reducedMotion ? 0 : Math.sin(this.time * 0.6 + i) * 0.5); });
+    if (this.location !== 'moon') this.fountainDrops.forEach((drop, i) => { const t = ((this.reducedMotion ? 0 : this.time * 0.65) + i / 24) % 1, a = i * 2.4; drop.position.set(Math.cos(a) * t * 1.3, 0.85 + Math.sin(t * Math.PI) * 2.1, Math.sin(a) * t * 1.3); });
     // camera
-    const mansionProximity = this.mansionGroup?.visible && this.stage !== 'moon' ? THREE.MathUtils.clamp((24 - Math.hypot(p.pos.x, p.pos.z - 32)) / 10, 0, 1) : 0;
-    const framingDistance = THREE.MathUtils.lerp(this.distance, Math.max(this.distance, mansionViewDistance(this.camera.aspect)), mansionProximity);
+    const mansionProximity = this.mansionGroup?.visible && this.location !== 'moon' ? THREE.MathUtils.clamp((24 - Math.hypot(p.pos.x, p.pos.z - 32)) / 10, 0, 1) : 0;
+    const framingDistance = THREE.MathUtils.lerp(Math.max(this.distance, sailing ? 15 : riding ? 12 : 0), Math.max(this.distance, mansionViewDistance(this.camera.aspect)), mansionProximity);
     const desired = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch)).multiplyScalar(framingDistance).add(p.pos).add(new THREE.Vector3(0, 1.6, 0));
     desired.y = Math.max(desired.y, 0.8);
     this.camera.position.lerp(desired, 1 - Math.pow(0.001, dt));

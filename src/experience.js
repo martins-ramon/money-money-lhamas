@@ -1,4 +1,5 @@
 import { JOBS, completed, liquid, wealth } from './model.js';
+import { FINANCE_MISSIONS } from './finance-missions.js';
 
 export const SETTINGS_KEY = 'money-money-lhamas-settings-v1';
 
@@ -35,7 +36,14 @@ export function missionFor(state) {
     case 'robbery': return { id: 'mansion', title: 'Welcome to the rich life', detail: 'Head home. Your mansion needs you.', progress: 0, count: 'Protect your fortune' };
     case 'business': return { id: 'hq', title: 'Next stop: one billion', detail: 'Upgrade Llama Labs. Put your money to work.', progress: Math.min(1, wealth(state) / 1e9), count: `${(wealth(state) / 1e9 * 100).toFixed(1)}% of $1B` };
     case 'moon': return { id: 'moonhouse', title: 'One giant leap for llamas', detail: 'Meet Elo Musk at your Moon house.', progress: 1, count: 'Billionaire unlocked' };
-    case 'freeplay': return { id: ['picnic', 'explorer', 'helper'].find(id => !state.sideQuests.includes(id)) || (state.celebration ? undefined : 'bbq'), title: state.celebration ? 'The world is yours' : 'Good friends. Great adventures.', detail: state.celebration ? 'Find every lucky coin. Make a little chaos.' : 'Finish all three missions, then celebrate.', progress: state.sideQuests.length / 3, count: `${state.sideQuests.length}/3 missions · ${state.collectibles.length}/12 coins` };
+    case 'freeplay': {
+      if (state.location === 'moon') return { id: 'to-city', title: 'Your home among the stars', detail: 'Explore the Moon, then take the portal back to the city.', progress: 1, count: 'Return whenever you like' };
+      if (state.celebration) {
+        const next = FINANCE_MISSIONS.find(m => !state.financeQuests?.includes(m.id));
+        if (next) return { id: next.id, title: next.title, detail: next.description, progress: (state.financeQuests?.length || 0) / FINANCE_MISSIONS.length, count: `${state.financeQuests?.length || 0}/${FINANCE_MISSIONS.length} money missions` };
+      }
+      return { id: ['picnic', 'explorer', 'helper'].find(id => !state.sideQuests.includes(id)) || (state.celebration ? undefined : 'bbq'), title: state.celebration ? 'The world is yours' : 'Good friends. Great adventures.', detail: state.celebration ? 'Sail, fly, dance with friends, or visit the Moon again.' : 'Finish all three missions, then celebrate.', progress: state.sideQuests.length / 3, count: `${state.sideQuests.length}/3 missions · ${state.collectibles.length}/12 coins` };
+    }
     default: return { title: 'Explore the town', detail: 'Little hooves. Big dreams.', progress: 0, count: '' };
   }
 }

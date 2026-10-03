@@ -1,4 +1,7 @@
+import { FINANCE_MISSIONS } from './finance-missions.js';
+
 export const SAVE_KEY = 'money-money-lhamas-v1';
+export const EXTRA_COSTUMES = ['Superman', 'Charlotte Katakuri', 'Skeleton', 'Dragon', 'Cyborg', 'Human', 'Zombie'];
 export const JOBS = [
   { id: 'burger', name: 'McLlama’s', role: 'Burger crew', icon: 'burger', pay: 400, color: 'peach', costume: 'Ronald McLlama', task: 'Build 5 perfect burgers', description: 'Big buns. Bigger ambitions.', location: [-11, -5] },
   { id: 'school', name: 'Sunny Hooves School', role: 'School janitor', icon: 'broom', pay: 400, color: 'sage', costume: 'Mop-top & cleaning cart', task: 'Clean up 8 muddy spots', description: 'A clean start to your fortune.', location: [10, -8] },
@@ -18,10 +21,10 @@ const round = n => Math.round(n * 100) / 100;
 export const money = (n, compact = false) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0, ...(compact ? { notation: 'compact', maximumFractionDigits: 1 } : {}) }).format(n);
 export const initialState = () => ({
   version: 1, started: false, character: 'anna', wallet: 0, savings: 0, earned: 0, spent: 0,
-  interest: 0, shifts: {}, stage: 'beginning', costume: 'Street dreamer', costumes: ['Street dreamer'],
+  interest: 0, shifts: {}, stage: 'beginning', location: 'city', costume: 'Street dreamer', costumes: ['Street dreamer', ...EXTRA_COSTUMES],
   asset: null, assetColor: '#e5aa7e', assetStyle: 'classic', company: 0, businessIncome: 0,
   holdings: {}, prices: Object.fromEntries(STOCKS.map(s => [s.id, s.price])),
-  ledger: [], collectibles: [], sideQuests: [], celebration: false, rentEscapes: 0, muted: true,
+  ledger: [], collectibles: [], sideQuests: [], financeQuests: [], celebration: false, rentEscapes: 0, muted: true,
 });
 export const liquid = s => round(s.wallet + s.savings);
 export const portfolio = s => round(STOCKS.reduce((sum, stock) => sum + (s.holdings[stock.id] || 0) * s.prices[stock.id], 0));
@@ -47,7 +50,7 @@ function progress(s) {
   if (s.stage === 'beginning' && completed(s) === 3 && liquid(s) >= 1000) s.stage = 'purchase';
   if (s.stage === 'careers' && completed(s, true) === 3) s.stage = 'timeskip';
   if (s.stage === 'business' && wealth(s) >= 1e9) {
-    s.stage = 'moon'; s.costumes.push('Lunar billionaire'); s.costume = 'Lunar billionaire';
+    s.stage = 'moon'; s.location = 'moon'; s.costumes.push('Lunar billionaire'); s.costume = 'Lunar billionaire';
   }
 }
 export function act(state, action) {
@@ -133,7 +136,19 @@ export function act(state, action) {
       break;
     case 'moon':
       if (s.stage !== 'moon') throw new Error('Reach a billion dollars first.');
-      s.stage = 'freeplay'; break;
+      s.stage = 'freeplay'; s.location = 'city'; break;
+    case 'travel':
+      if (!s.started || s.stage !== 'freeplay') throw new Error('Finish your first Moon adventure to unlock return trips.');
+      if (!['city', 'moon'].includes(action.location)) throw new Error('Choose the city or the Moon.');
+      s.location = action.location; break;
+    case 'financeQuest': {
+      const mission = FINANCE_MISSIONS.find(m => m.id === action.id);
+      if (!s.started || !mission || s.financeQuests.includes(action.id)) throw new Error('That finance mission is not available.');
+      if (!Array.isArray(action.answers) || action.answers.length !== mission.questions.length || action.answers.some((answer, i) => !Number.isInteger(answer) || answer < 0 || answer >= mission.questions[i].choices.length)) throw new Error('Answer every question before finishing the mission.');
+      const incorrect = mission.questions.findIndex((question, i) => question.answer !== action.answers[i]);
+      if (incorrect !== -1) throw new Error(`Question ${incorrect + 1}: ${mission.questions[incorrect].explanation} Try again!`);
+      s.financeQuests.push(mission.id); credit(s, `Finance mission · ${mission.title}`, mission.reward); break;
+    }
     case 'quest':
       if (s.stage !== 'freeplay' || !['picnic', 'explorer', 'helper'].includes(action.id) || s.sideQuests.includes(action.id)) throw new Error('That mission is not available.');
       s.sideQuests.push(action.id); credit(s, 'Free-world mission completed', 5000); break;
@@ -159,12 +174,18 @@ export function loadGame(storage) {
     if (!saved.shifts || !saved.holdings || !saved.prices || typeof saved.shifts !== 'object' || typeof saved.holdings !== 'object') return base;
     if (JOBS.some(j => saved.shifts[j.id] !== undefined && (!Number.isSafeInteger(saved.shifts[j.id]) || saved.shifts[j.id] < 0))) return base;
     if (STOCKS.some(s => !Number.isFinite(saved.prices[s.id]) || saved.prices[s.id] < 10 || saved.prices[s.id] > 1e12 || (saved.holdings[s.id] !== undefined && (!Number.isSafeInteger(saved.holdings[s.id]) || saved.holdings[s.id] < 0)))) return base;
-    const outfits = ['Street dreamer', 'Fresh streetwear', 'Lunar billionaire', ...JOBS.map(j => j.costume)];
+    const outfits = ['Street dreamer', 'Fresh streetwear', 'Lunar billionaire', ...JOBS.map(j => j.costume), ...EXTRA_COSTUMES];
     if (!Array.isArray(saved.costumes) || saved.costumes.some(c => !outfits.includes(c)) || !saved.costumes.includes(saved.costume)) return base;
     if (![null, 'house', 'car'].includes(saved.asset) || !/^#[0-9a-f]{6}$/i.test(saved.assetColor) || !['classic', 'sporty', 'cozy'].includes(saved.assetStyle)) return base;
     if (!Array.isArray(saved.collectibles) || saved.collectibles.some(n => !Number.isInteger(n) || n < 0 || n > 11)) return base;
     if (!Array.isArray(saved.sideQuests) || saved.sideQuests.some(q => !['picnic', 'explorer', 'helper'].includes(q)) || !Array.isArray(saved.ledger) || typeof saved.celebration !== 'boolean') return base;
     if (saved.ledger.some(e => !e || typeof e.label !== 'string' || !Number.isFinite(e.amount) || !Number.isFinite(e.date))) return base;
-    return Object.fromEntries(Object.keys(base).map(key => [key, saved[key] ?? base[key]]));
+    if (saved.financeQuests !== undefined && (!Array.isArray(saved.financeQuests) || saved.financeQuests.some(id => !FINANCE_MISSIONS.some(m => m.id === id)) || new Set(saved.financeQuests).size !== saved.financeQuests.length)) return base;
+    const location = saved.location ?? (saved.stage === 'moon' ? 'moon' : 'city');
+    if (!['city', 'moon'].includes(location) || (saved.stage === 'moon' && location !== 'moon') || (location === 'moon' && !['moon', 'freeplay'].includes(saved.stage))) return base;
+    const restored = Object.fromEntries(Object.keys(base).map(key => [key, saved[key] ?? base[key]]));
+    restored.location = location;
+    restored.costumes = [...new Set([...saved.costumes, ...EXTRA_COSTUMES])];
+    return restored;
   } catch { return initialState(); }
 }
