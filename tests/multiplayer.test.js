@@ -9,7 +9,7 @@ import { Multiplayer } from '../src/multiplayer.js';
 const pose = fields => ({ x: 5, y: 0, z: -12, heading: 1.2, costume: 'Cyborg', character: 'carlos', location: 'city', vehicle: null, dancing: false, flying: false, ...fields });
 
 async function serverFor(t, options) {
-  const game = createGameServer(options);
+  const game = createGameServer({ ...options, roomOptions: { ...options?.roomOptions, env: {} } });
   await new Promise((resolve, reject) => { game.server.once('error', reject); game.server.listen(0, '127.0.0.1', resolve); });
   t.after(() => game.close());
   const baseUrl = `http://127.0.0.1:${game.server.address().port}`;

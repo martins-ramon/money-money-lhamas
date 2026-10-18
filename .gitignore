@@ -6,8 +6,9 @@ test-results/
 
 # Ruflo local secrets and runtime data
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+.vercel/
 .claude-flow/data/
 .claude-flow/logs/
 .claude-flow/sessions/

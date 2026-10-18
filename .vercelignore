@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.agents
+.claude
+.claude-flow
+.codex
+.swarm
+ruvector.db
+tests
+test-results
+.env
+.env.*
+!.env.example

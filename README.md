@@ -13,38 +13,43 @@ npm ci
 npm run dev      # servidor de desenvolvimento em http://localhost:5000
 npm run build    # gera a versão final em dist/
 npm run preview  # confere o build e as salas em http://localhost:4173
-npm run serve    # produção: serve dist/ e a API em http://localhost:5000
+npm run serve    # servidor Node local: dist/ e API em http://localhost:5000
 npm test         # regras, controles, missões, veículos e salas (node --test)
 ```
 
-Requer Node.js 22.12 ou mais novo (com nvm, execute `nvm use`). `npm start` também inicia o desenvolvimento. Abra http://localhost:5000 no navegador; mantenha o terminal rodando e use Ctrl+C para encerrar. Se a porta estiver ocupada, encerre o outro servidor antes de iniciar.
+Requer Node.js 22.x, a partir de 22.12 (com nvm, execute `nvm use`). `npm start` também inicia o desenvolvimento. Abra http://localhost:5000 no navegador; mantenha o terminal rodando e use Ctrl+C para encerrar. Se a porta estiver ocupada, encerre o outro servidor antes de iniciar.
 
-O progresso continua salvo no `localStorage` do navegador. Cada navegador e endereço mantém seu próprio progresso; o save de localhost não é transferido automaticamente para o Replit. O multiplayer usa uma API Node.js no mesmo endereço do jogo. Ela já está disponível em `dev`, `preview` e `serve`; não precisa de banco de dados, serviço externo ou segredo. Execute `npm run build` antes de `npm run serve`. A porta de produção pode ser definida pela variável `PORT` (padrão: 5000).
+O progresso continua salvo no `localStorage` do navegador. O multiplayer usa uma API Node.js no mesmo endereço do jogo, disponível em `dev`, `preview` e `serve`. Localmente, sem credenciais Redis, as salas ficam na memória e não exigem serviço externo. Execute `npm run build` antes de `npm run serve`; a variável `PORT` altera sua porta (padrão: 5000).
 
-## Rodar e hospedar no Replit
+## Hospedar na Vercel
 
-1. Importe este repositório no Replit, incluindo o arquivo oculto `.replit`.
-2. Clique em **Run**. Abra o **Preview** para jogar. O servidor escuta em `0.0.0.0:5000`, mapeado para a porta externa 80, e serve também a API de salas.
-3. Em **Publishing → Adjust settings**, selecione **Reserved VM**. A configuração local usa `deploymentTarget = "vm"`, build `npm ci --include=dev && npm run build` e comando de execução `npm run serve`.
-4. Mantenha uma única instância do servidor Node.js: as salas ficam na memória desse processo. Publique a nova versão após conferir as configurações.
+O frontend é publicado como arquivos estáticos e a API em `api/rooms.js` roda como Vercel Function. Como requisições da mesma sala podem chegar a instâncias diferentes, o multiplayer na Vercel usa **Upstash Redis**, com alterações atômicas e expiração das salas. Não há servidor permanente, cron ou WebSocket para configurar.
 
-**Publicações existentes precisam de ajuste manual:** se o projeto já estiver publicado como **Static**, altere o tipo para **Reserved VM** no painel do Replit. Uma publicação estática não executa a API multiplayer. Os arquivos do repositório foram preparados para VM; a publicação em nuvem ainda não foi alterada.
+1. Importe o repositório em **Add New → Project**, usando a raiz do projeto. O `vercel.json` define preset **Vite**, instalação `npm ci --include=dev`, build `npm run build` e saída `dist`. Use Node.js **22.x**. Não configure `npm run serve` como comando de produção na Vercel.
+2. No Marketplace/Storage da Vercel, conecte uma base **Upstash Redis** ao projeto. Escolha uma região próxima à região de execução da Function. Use uma base separada ou um prefixo exclusivo para este jogo.
+3. Em **Settings → Environment Variables**, confira o par `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN`. O par `KV_REST_API_URL` e `KV_REST_API_TOKEN`, disponibilizado por algumas integrações, também é aceito. Use token de leitura e escrita; os dois valores devem pertencer à mesma base. Configure **Production** e, para testar previews, também **Preview**. Não coloque essas credenciais em variáveis `VITE_*` ou no código do navegador.
+4. Faça o deploy novamente após configurar as variáveis. Abra a publicação em dois navegadores, crie uma sala em um e entre pelo código no outro. Confira movimento, remoção pelo criador e saída. O jogo individual funciona mesmo quando o Redis não está configurado; nesse caso, a API online responde `503` com uma mensagem de indisponibilidade.
+5. Em **Settings → Domains**, adicione o domínio e aplique os registros DNS indicados pela Vercel. Valide o domínio com HTTPS antes de desativar a hospedagem antiga. Projeto, banco, credenciais, domínio e DNS precisam ser configurados na sua conta; os arquivos do repositório não fazem essas alterações por conta própria.
 
-O Replit documenta a escolha do tipo em [Deployment types](https://docs.replit.com/features/publishing/deployment-types) e os comandos de build/execução em [App Configuration](https://docs.replit.com/features/project-setup/configuration).
+As referências de implantação são [Vite na Vercel](https://vercel.com/docs/frameworks/frontend/vite), [Functions Node.js](https://vercel.com/docs/functions/runtimes/node-js) e [Redis na Vercel](https://vercel.com/docs/redis). A configuração antiga do Replit foi removida.
 
-O log `VITE ... ready` é esperado no **Run/Preview**. Na publicação com `npm run serve`, o log é `Money Money Lhamas is running on port 5000` (ou a porta definida em `PORT`). Depois de atualizar o código, republique para aplicar as correções no domínio público.
+Para testar Redis localmente, copie `.env.example` para `.env.local` e preencha um par de credenciais. `dev`, `preview` e `serve` carregam essas variáveis apenas no servidor. Sem credenciais, o modo local usa memória; uma configuração incompleta retorna erro, para evitar salas inconsistentes. `ROOM_KEY_PREFIX` permite separar projetos/ambientes que compartilham uma base. Sem override, o prefixo usa `VERCEL_ENV` (ou `development` fora da Vercel); Production e Preview ficam separados, mas previews do mesmo ambiente compartilham o prefixo. Use uma base própria ou prefixos diferentes se precisar de isolamento adicional.
+
+O cliente faz até dez sincronizações por segundo por jogador conectado, inclusive parado, sem sobrepor requisições de sincronização. Considere esse tráfego ao escolher os limites da Function e do Redis; os limites gratuitos do provedor não são uma garantia de capacidade para partidas contínuas.
+
+**Progresso na mudança de endereço:** saves, idioma e preferências pertencem à origem do navegador (protocolo, domínio e porta). Mantendo o mesmo domínio com HTTPS, continuam disponíveis no mesmo navegador. Ao trocar um endereço do Replit por `*.vercel.app`, o novo site não acessa os saves antigos; este projeto não transfere progresso automaticamente entre domínios. As salas em andamento na hospedagem antiga também não são migradas: crie novos códigos no novo endereço.
 
 ## Jogar online com amigos
 
-Abra **Jogar online / Play online**, escolha um nome e crie uma sala. Compartilhe o código de **seis caracteres** ou o link exibido para que os amigos entrem na mesma sala, com até **oito jogadores**. Todos precisam acessar a mesma instalação do jogo; uma sala no desenvolvimento local não aparece na publicação do Replit.
+Abra **Jogar online / Play online**, escolha um nome e crie uma sala. Compartilhe o código de **seis caracteres** ou o link exibido para que os amigos entrem na mesma sala, com até **oito jogadores**. Todos devem acessar a mesma publicação do jogo; salas locais em memória não aparecem na Vercel.
 
 As salas mostram a presença, posição, roupa, dança, voo e veículo dos amigos. Para enxergar outro jogador, os dois precisam estar no mesmo lugar: cidade ou Lua. Dinheiro, missões, história e salvamento continuam independentes em cada navegador; NPCs e atividades são simulados localmente. Não há chat.
 
 A sincronização usa requisições HTTP curtas com resposta JSON completa, combinando envio de posição e recebimento dos amigos. A abertura da sala não depende de um fluxo SSE contínuo, que pode ficar retido por intermediários da hospedagem e provocar timeout. O cliente só indica conexão concluída após receber uma resposta autenticada válida.
 
-As salas são temporárias. Reiniciar ou republicar o servidor descarta as salas, sem apagar os saves dos navegadores. Após perder a conexão, entre novamente; se a sala já tiver sido encerrada, crie outra e compartilhe o novo código. O jogo individual continua disponível fora das salas.
+As salas são temporárias. No modo local em memória, reiniciar o servidor descarta as salas. Na Vercel, reinícios das Functions não apagam salas ativas no Redis; salas inativas expiram. Após perder a conexão, entre novamente; se a sala já tiver sido encerrada, crie outra e compartilhe o novo código. O jogo individual e os saves dos navegadores são independentes das salas.
 
-Ao fechar a aba ou o navegador, o jogo envia um aviso de saída. Se o navegador encerrar sem conseguir avisar, o servidor remove o personagem após 15 segundos sem contato, com verificação a cada segundo. Uma página suspensa por muito tempo também perde sua vaga; ao voltar, entre na sala novamente. Apenas trocar de aba não envia uma saída.
+Ao fechar a aba ou o navegador, o jogo envia um aviso de saída. Após 15 segundos sem contato, a sessão perde a validade: no Redis, a remoção é aplicada na próxima requisição da sala e salas abandonadas expiram por TTL; no modo local, há verificação a cada segundo. Uma página suspensa por muito tempo também perde sua vaga; ao voltar, entre na sala novamente. Apenas trocar de aba não envia uma saída.
 
 O criador da sala tem o botão **Remover / Remove** ao lado dos outros jogadores, com confirmação. O jogador removido sai da sala e recebe uma mensagem, mantendo seu progresso individual. A remoção encerra aquela sessão; não é um bloqueio permanente de novos acessos pelo código. Se o criador sair, os demais continuam jogando, mas ninguém recebe automaticamente a permissão de remover jogadores.
 
@@ -116,8 +121,13 @@ Bônus: 12 moedas da sorte escondidas pela cidade e lhamas cidadãs que saem voa
 
 ```
 index.html                  página única
-server.mjs                  servidor de produção: dist/ + API de salas
-server/rooms.js             salas temporárias, sessões e eventos multiplayer
+vercel.json                 build, rotas e cache da publicação Vercel
+api/rooms.js                entrada da Vercel Function de multiplayer
+server.mjs                 servidor Node local: dist/ + API de salas
+server/runtime-rooms.js     seleção de memória local ou Redis
+server/rooms.js             salas locais em memória e eventos multiplayer
+server/serverless-rooms.js  salas compartilhadas para Functions
+server/redis-store.js       armazenamento Redis REST com alterações atômicas
 vite.config.js              Vite e API de salas em dev/preview
 src/main.js                 HUD, painéis, seleção de idioma, cutscenes e loop principal
 src/i18n.js                 idioma ativo, preferência salva e traduções de apresentação

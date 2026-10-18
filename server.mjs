@@ -3,13 +3,13 @@ import { createReadStream } from 'node:fs';
 import { realpath, stat } from 'node:fs/promises';
 import { dirname, extname, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createRoomService } from './server/rooms.js';
+import { createRuntimeRoomService } from './server/runtime-rooms.js';
 
 const projectDirectory = dirname(fileURLToPath(import.meta.url));
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav' };
 
 export function createGameServer({ directory = resolve(projectDirectory, 'dist'), roomOptions } = {}) {
-  const rooms = createRoomService(roomOptions);
+  const rooms = createRuntimeRoomService(roomOptions);
   async function serveStatic(req, res) {
     if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405); res.end('Method not allowed.'); return; }
     try {

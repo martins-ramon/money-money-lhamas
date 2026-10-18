@@ -40,7 +40,7 @@ export class Multiplayer {
     if (signal?.aborted) controller.abort(); else signal?.addEventListener('abort', abort, { once: true });
     try {
       const response = await this.fetch(`${this.baseUrl}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body || {}), signal: controller.signal, keepalive, credentials: 'same-origin', cache: 'no-store' });
-      let data; try { data = await response.json(); } catch { throw new Error('Multiplayer needs the game server. Start it with npm run dev or npm run serve.'); }
+      let data; try { data = await response.json(); } catch { throw new Error('Online mode is unavailable right now. Please try again later.'); }
       if (!response.ok) throw Object.assign(new Error(data.error || 'Could not connect to the room.'), { status: response.status });
       return data;
     } finally { clearTimeout(timeout); signal?.removeEventListener('abort', abort); }

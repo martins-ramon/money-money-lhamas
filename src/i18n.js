@@ -132,7 +132,7 @@ const errors = {
   'Complete the three side missions before the BBQ party.': 'Conclua as três missões extras antes do churrasco.',
   'Unknown game action.': 'Ação desconhecida no jogo.',
   'Enter a six-character room code.': 'Digite um código de sala com seis caracteres.',
-  'Multiplayer needs the game server. Start it with npm run dev or npm run serve.': 'O modo online precisa do servidor do jogo. Inicie com npm run dev ou npm run serve.',
+  'Online mode is unavailable right now. Please try again later.': 'O modo online está indisponível no momento. Tente novamente mais tarde.',
   'Could not connect to the room.': 'Não foi possível conectar à sala.',
   'The room connection could not open. Please join again.': 'Não foi possível abrir a conexão. Entre na sala novamente.',
   'The room connection was lost. Please join again.': 'A conexão com a sala caiu. Entre novamente.',
