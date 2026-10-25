@@ -14,7 +14,7 @@ function fixture(overrides = {}, reducedMotion = false) {
 }
 
 test('remote riders remain visible above the deck or cabin of each transport', () => {
-  for (const [vehicle, y] of [['car', 1.2], ['boat', 1.45], ['yacht', 3], ['glider', 0]]) {
+  for (const [vehicle, y] of [['car', 1.2], ['boat', 1.45], ['yacht', 3], ['glider', 0], ['turtle', 1.6]]) {
     const { view, record } = fixture({ vehicle }); view.update(.1, 1);
     assert.equal(record.avatar.position.y, y);
     assert.equal(record.avatar.scale.x, vehicle === 'glider' ? 1 : .65);
@@ -22,6 +22,34 @@ test('remote riders remain visible above the deck or cabin of each transport', (
     view.world.location = 'moon'; view.update(.1, 2);
     assert.equal(record.group.visible, false);
   }
+});
+
+test('Atlantic peers stay in their own map and paddle until boarding a turtle', () => {
+  const { view, record } = fixture({ costume: 'Fish Llama', location: 'atlantic', x: 3, y: 2 });
+  view.update(.1, 1);
+  assert.equal(record.group.visible, false);
+  view.world.location = 'atlantic'; view.update(.1, 1);
+  assert.equal(record.group.visible, true);
+  assert.ok(record.avatar.userData.legs.some(leg => leg.rotation.z !== 0));
+  assert.equal(record.avatar.userData.body.rotation.z, -.12);
+  record.data.vehicle = 'turtle'; record.vehicle = new THREE.Group(); view.update(.1, 1.1);
+  assert.equal(record.avatar.position.y, 1.6);
+  assert.equal(record.avatar.userData.body.rotation.z, 0);
+  assert.ok(record.avatar.userData.legs.every(leg => leg.rotation.z === 0));
+});
+
+test('coastal swimming is inferred from position and reduced motion removes bobbing', () => {
+  const { view, record } = fixture({ costume: 'Marine Llama', x: 70, y: 0 });
+  view.update(.1, 1);
+  assert.equal(record.avatar.userData.body.rotation.z, -.12);
+  assert.ok(record.avatar.userData.body.position.y > 0);
+  view.world.reducedMotion = true; view.update(.1, 2);
+  assert.equal(record.avatar.userData.body.position.y, 0);
+  assert.ok(record.avatar.userData.legs.every(leg => leg.rotation.z === 0));
+  record.data.flying = true; view.update(.1, 3);
+  assert.equal(record.avatar.userData.body.rotation.z, 0);
+  record.data.flying = false; record.data.x = 60; view.update(.1, 4);
+  assert.equal(record.avatar.userData.body.rotation.z, 0);
 });
 
 test('remote flight boots follow flight state and reduced motion suppresses dancing', () => {

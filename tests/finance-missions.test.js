@@ -8,7 +8,9 @@ const started = () => act(initialState(), { type: 'start', character: 'anna' });
 const solve = mission => ({ type: 'financeQuest', id: mission.id, answers: mission.questions.map(q => q.answer) });
 
 test('finance missions have unique IDs, positive rewards and complete multiple-choice questions', () => {
-  assert.equal(FINANCE_MISSIONS.length, 6);
+  assert.equal(FINANCE_MISSIONS.length, 18);
+  assert.equal(FINANCE_MISSIONS.filter(m => m.location === 'city').length, 6);
+  assert.equal(FINANCE_MISSIONS.filter(m => m.location === 'atlantic').length, 12);
   assert.equal(new Set(FINANCE_MISSIONS.map(m => m.id)).size, FINANCE_MISSIONS.length);
   for (const mission of FINANCE_MISSIONS) {
     assert.ok(mission.title && mission.description && mission.reward > 0);
@@ -18,6 +20,26 @@ test('finance missions have unique IDs, positive rewards and complete multiple-c
       assert.ok(question.choices.length >= 2);
       assert.ok(Number.isInteger(question.answer) && question.answer >= 0 && question.answer < question.choices.length);
     }
+  }
+});
+
+test('Atlantic lessons include correct numerical results for the financial scenarios', () => {
+  const expected = {
+    'reef-emergency': ['$50', '4 weeks'],
+    'pearl-priorities': ['$30', 'Save another $10 before buying it'],
+    'coral-interest': ['$10', '$230'],
+    'shell-compounding': ['$110', '$121'],
+    'turtle-installments': ['$270', '$30'],
+    'mermaid-subscriptions': ['$60', '$48'],
+    'triton-rent': ['$50', '$35'],
+    'seaweed-break-even': ['$3', '10 sales'],
+    'ocean-delivery': ['Shop B: $80', '$75'],
+    'turtle-value': ['$100', '20%'],
+    'castle-goal': ['$360', '3 weeks'],
+    'kraken-receipt': ['$55', 'Remove the extra $10 cable charge'],
+  };
+  for (const mission of FINANCE_MISSIONS.filter(m => m.location === 'atlantic')) {
+    assert.deepEqual(mission.questions.map(q => q.choices[q.answer]), expected[mission.id], mission.id);
   }
 });
 
@@ -60,6 +82,7 @@ test('finance rewards cannot be claimed without complete valid answers or before
 });
 
 test('Portuguese finance missions preserve answers, progression and rewards', t => {
+  t.mock.method(Date, 'now', () => 1700000000000);
   const previous = getLanguage(); t.after(() => setLanguage(previous));
   setLanguage('pt');
   const localized = financeMissions();

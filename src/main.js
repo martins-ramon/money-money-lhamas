@@ -1,6 +1,6 @@
 import './style.css';
 import { icon, llamaLogo } from './icons.js';
-import { JOBS, STOCKS, CHAPTERS, EXTRA_COSTUMES, money, initialState, loadGame, act, liquid, portfolio, wealth, chapter, income, upgradeCost, completed, SAVE_KEY } from './model.js';
+import { JOBS, STOCKS, CHAPTERS, EXTRA_COSTUMES, POSEIDON_COSTUME, money, initialState, loadGame, act, liquid, portfolio, wealth, chapter, income, upgradeCost, completed, SAVE_KEY } from './model.js';
 import { financeMissions } from './finance-missions.js';
 import { World, preview } from './world.js';
 import { playShift, defendMansion, playQuiz } from './minigames.js';
@@ -40,7 +40,7 @@ function sfx(kind) {
 /* ---------- DOM skeleton ---------- */
 const app = document.getElementById('app');
 app.innerHTML = `
-  <canvas class="world" tabindex="0" aria-label="Game world. WASD or arrows to move, Shift to sprint, Space to jump, E to interact, Escape to pause."></canvas>
+  <canvas class="world" tabindex="0" aria-label="Game world. WASD or arrows to move, Shift to sprint, Space to jump, E to interact, Q to attack, C to dive, Escape to pause."></canvas>
   <div class="hud hidden" data-hud>
     <div class="hud-top">
       <div class="hud-profile"><div class="avatar">${llamaLogo}</div><div><b data-name>Anna</b><small data-costume>${t("Street dreamer", "Sonhador das ruas")}</small></div></div>
@@ -73,9 +73,15 @@ app.innerHTML = `
     <div class="row">
       <button class="btn small lilac" data-dance aria-pressed="false" title="Dance (B)">${t("🕺 Dance", "🕺 Dançar")}</button>
       <button class="btn small sky hidden" data-fly aria-pressed="false" title="Fly / land (F)">${t("🚀 Fly", "🚀 Voar")}</button>
-      <button class="btn small ghost hidden" data-milk title="Shoot milk (Q)">${t("🥛 Milk", "🥛 Leite")}</button>
+      <button class="btn small coral" data-attack title="Attack (Q)">${t("💥 Attack", "💥 Atacar")}</button>
+      <button class="btn small sky hidden" data-dive title="Dive (C)">${t("🌊 Dive", "🌊 Mergulhar")}</button>
     </div>
   </div>
+  <section class="boss-status hidden" data-boss aria-label="Poseidon battle">
+    <b data-boss-title></b><small data-boss-hint></small>
+    <label><span data-boss-label></span><progress data-boss-hp max="180" value="180"></progress></label>
+    <label><span data-player-label></span><progress data-player-hp max="100" value="100"></progress></label>
+  </section>
   <button class="online-status hidden" data-online aria-label="Open multiplayer room"></button>
   <div class="objective hidden" data-objective></div>
   <div class="rent-banner hidden" data-rent></div>
@@ -121,7 +127,7 @@ function refreshLanguageUI() {
   document.title = t('Money Money Lhamas — From zero to the Moon', 'Money Money Lhamas — Do zero até a Lua');
   const description = document.querySelector('meta[name="description"]');
   if (description) description.content = t('A small llama with big dreams. Work, save, invest and explore from the city to the Moon.', 'Uma pequena lhama com grandes sonhos. Trabalhe, poupe, invista e explore da cidade até a Lua.');
-  canvas.setAttribute('aria-label', t('Game world. WASD or arrows to move, Shift to sprint, Space to jump, E to interact, Escape to pause.', 'Mundo do jogo. WASD ou setas para mover, Shift para correr, Espaço para pular, E para interagir e Escape para pausar.'));
+  canvas.setAttribute('aria-label', t('Game world. WASD or arrows to move, Shift to sprint, Space to jump, E to interact, Q to attack, C to dive, Escape to pause.', 'Mundo do jogo. WASD ou setas para mover, Shift para correr, Espaço para pular, E para interagir, Q para atacar, C para mergulhar e Escape para pausar.'));
   const actionLabels = {
     multiplayer: t('Play online with friends', 'Jogar online com amigos'), finance: t('Money missions', 'Missões financeiras'),
     map: t('Town guide (M)', 'Guia da cidade (M)'), wallet: t('Wallet & Piggy Bank', 'Carteira e cofrinho'),
@@ -136,10 +142,12 @@ function refreshLanguageUI() {
   map.title = t('Open town guide (M)', 'Abrir guia da cidade (M)'); map.setAttribute('aria-label', map.title);
   map.querySelector('span').innerHTML = `${t('LLAMA TOWN', 'CIDADE DAS LHAMAS')} <b>${t('MAP ↗', 'MAPA ↗')}</b>`;
   map.querySelector('small').textContent = t('● You · Gold = destination', '● Você · Dourado = destino');
-  $('[data-controls]').innerHTML = `<kbd>W A S D</kbd> ${t('move', 'mover')} <kbd>Shift</kbd> ${t('sprint', 'correr')} <kbd>${t('Space', 'Espaço')}</kbd> ${t('jump', 'pular')} <kbd>M</kbd> ${t('map', 'mapa')} <kbd>Esc</kbd> ${t('pause', 'pausar')}`;
+  $('[data-controls]').innerHTML = `<kbd>W A S D</kbd> ${t('move', 'mover')} <kbd>Shift</kbd> ${t('sprint', 'correr')} <kbd>${t('Space', 'Espaço')}</kbd> ${t('jump', 'pular')} <kbd>Q</kbd> ${t('attack', 'atacar')} <kbd>C</kbd> ${t('dive', 'mergulhar')} <kbd>M</kbd> ${t('map', 'mapa')} <kbd>Esc</kbd> ${t('pause', 'pausar')}`;
   $('[data-dance]').textContent = t('🕺 Dance', '🕺 Dançar'); $('[data-dance]').title = t('Dance (B)', 'Dançar (B)');
   $('[data-fly]').title = t('Fly / land (F)', 'Voar / pousar (F)');
-  $('[data-milk]').textContent = t('🥛 Milk', '🥛 Leite'); $('[data-milk]').title = t('Shoot milk (Q)', 'Atirar leite (Q)');
+  $('[data-attack]').title = t('Attack with any skin (Q)', 'Atacar com qualquer skin (Q)');
+  $('[data-dive]').title = t('Dive / swim down (C)', 'Mergulhar / nadar para baixo (C)');
+  $('[data-boss]').setAttribute('aria-label', t('Poseidon battle', 'Batalha contra Poseidon'));
   $('[data-mode]').textContent = world.getAdventureStatus().label;
   $('[data-online]').setAttribute('aria-label', t('Open multiplayer room', 'Abrir sala multiplayer'));
   $('[data-sprint]').innerHTML = `⚡<br>${t('Run', 'Correr')}`;
@@ -192,7 +200,7 @@ function syncHUD() {
   if (world.playerMesh.userData.costume !== state.costume || world.bodyColor !== body) { world.bodyColor = body; world.setCostume(state.costume); }
   const assetKey = `${state.asset}|${state.assetColor}|${state.assetStyle}`;
   if (synced.asset !== assetKey) { synced.asset = assetKey; world.setAsset(state.asset, state.assetColor, state.assetStyle); }
-  const stageKey = `${state.stage}|${state.location}|${state.sideQuests.join(',')}|${state.financeQuests.join(',')}`;
+  const stageKey = `${state.stage}|${state.location}|${state.poseidonDefeated}|${state.sideQuests.join(',')}|${state.financeQuests.join(',')}`;
   if (synced.stage !== stageKey) { synced.stage = stageKey; world.setStage(state.stage, state); }
   world.setCollectibles(state.collectibles);
   const o = $('[data-objective]'); o.innerHTML = objective(); o.classList.toggle('hidden', !state.started);
@@ -269,7 +277,7 @@ function titleScreen() {
     </div>`, 'scene');
   const stops = [...el.querySelectorAll('[data-pick]')].map(b => preview(b.querySelector('canvas'), b.dataset.pick === 'anna' ? 'Girlfriend' : 'Street dreamer', b.dataset.pick === 'anna' ? 0xfff1d6 : 0xe8caa4, settings.reducedMotion));
   el.querySelector('[data-language]').onchange = event => { stops.forEach(stop => stop()); changeLanguage(event.target.value); titleScreen(); queueMicrotask(() => overlayRoot.querySelector('[data-language]')?.focus()); };
-  const begin = () => { stops.forEach(s => s()); close(); canvas.focus(); hud.classList.remove('hidden'); $('[data-touch]').classList.toggle('hidden', !TOUCH); syncHUD(); if (!state.shifts || !Object.keys(state.shifts).length) intro(); if (state.stage === 'timeskip') pendingStages.push(['careers', 'timeskip']); scheduleRent(); sfx('ok'); };
+  const begin = () => { stops.forEach(s => s()); close(); canvas.focus(); hud.classList.remove('hidden'); $('[data-touch]').classList.toggle('hidden', !TOUCH); syncHUD(); if (state.location === 'city' && !state.poseidonDefeated && (!state.shifts || !Object.keys(state.shifts).length)) intro(); if (state.stage === 'timeskip') pendingStages.push(['careers', 'timeskip']); scheduleRent(); sfx('ok'); };
   el.querySelectorAll('[data-pick]').forEach(b => (b.onclick = () => { if (state.started && state.character !== b.dataset.pick && !confirm(t("Start a brand new adventure? Your current progress will be replaced.", "Começar uma aventura nova? Seu progresso atual será substituído."))) return; if (!state.started || state.character !== b.dataset.pick) { state = initialState(); } dispatch({ type: 'start', character: b.dataset.pick }); begin(); }));
   el.querySelector('[data-continue]')?.addEventListener('click', begin);
   el.querySelector('[data-title-sound]').onclick = e => { dispatch({ type: 'mute' }); e.currentTarget.innerHTML = `${icon(state.muted ? 'mute' : 'sound')}${t(" Sound ", " Som ")}${state.muted ? t("off — tap to enable", "desligado — toque para ligar") : t("on", "ligado")}`; sfx('ok'); };
@@ -325,10 +333,10 @@ function walletPanel() {
   el.querySelector('[data-save]').onclick = () => { if (dispatch({ type: 'save' })) { toast(t("Deposited into the Piggy Bank!", "Dinheiro depositado no cofrinho!"), 'cash'); walletPanel(); } };
 }
 function wardrobePanel() {
-  const all = ['Street dreamer', ...EXTRA_COSTUMES, 'Fresh streetwear', ...JOBS.map(j => j.costume), 'Lunar billionaire'];
+  const all = ['Street dreamer', ...EXTRA_COSTUMES, POSEIDON_COSTUME, 'Fresh streetwear', ...JOBS.map(j => j.costume), 'Lunar billionaire'];
   const el = open(`
-    ${head(t("Wardrobe", "Guarda-roupa"), t("New hero skins are free! Superman, Dragon and Cyborg can fly (F). Cyborg shoots milk (Q). Everyone can dance (B).", "Os novos visuais de heróis são grátis! Superman, Dragão e Ciborgue podem voar (F). Ciborgue atira leite (Q). Todos podem dançar (B)."))}
-    <div class="card"><div class="choice-grid">${all.map(c => { const has = state.costumes.includes(c), job = JOBS.find(j => j.costume === c); return `<button class="choice ${state.costume === c ? 'selected' : ''}" data-c="${c}" ${has ? '' : 'disabled'}><div class="ico">${icon(has ? (job?.icon || 'shirt') : 'lock')}</div><b>${nameLabel(c)}</b><small>${has ? (state.costume === c ? t("Wearing now", "Usando agora") : t("Tap to wear", "Toque para vestir")) : job ? t(`Finish a shift at ${nameLabel(job.name)}`, `Complete um turno em ${nameLabel(job.name)}`) : c === 'Lunar billionaire' ? t("Reach $1 billion", "Alcance $1 bilhão") : t("Buy clothes ($120)", "Compre roupas ($120)")}</small></button>`; }).join('')}</div></div>`);
+    ${head(t("Wardrobe", "Guarda-roupa"), t("Attack with every skin (Q). Fish Llama and Marine Llama are free; Marine fires kraken tentacles. Defeat Poseidon to unlock the trident and shark attacks! Fly with F and dance with B.", "Ataque com todas as skins (Q). Lhama Peixe e Lhama Marinha são grátis; a Marinha atira tentáculos de kraken. Derrote Poseidon para liberar o tridente e os ataques de tubarão! Voe com F e dance com B."))}
+    <div class="card"><div class="choice-grid">${all.map(c => { const has = state.costumes.includes(c), job = JOBS.find(j => j.costume === c); return `<button class="choice ${state.costume === c ? 'selected' : ''}" data-c="${c}" ${has ? '' : 'disabled'}><div class="ico">${icon(has ? (job?.icon || 'shirt') : 'lock')}</div><b>${nameLabel(c)}</b><small>${has ? (state.costume === c ? t("Wearing now", "Usando agora") : t("Tap to wear", "Toque para vestir")) : job ? t(`Finish a shift at ${nameLabel(job.name)}`, `Complete um turno em ${nameLabel(job.name)}`) : c === POSEIDON_COSTUME ? t('Defeat Poseidon in Atlantic City', 'Derrote Poseidon em Atlantic City') : c === 'Lunar billionaire' ? t("Reach $1 billion", "Alcance $1 bilhão") : t("Buy clothes ($120)", "Compre roupas ($120)")}</small></button>`; }).join('')}</div></div>`);
   el.querySelectorAll('[data-c]').forEach(b => (b.onclick = () => { if (dispatch({ type: 'costume', costume: b.dataset.c })) { sfx('ok'); wardrobePanel(); } }));
 }
 function reportPanel() {
@@ -346,7 +354,7 @@ function reportPanel() {
 function financePanel() {
   const el = open(`${head(t("Money missions", "Missões financeiras"), t("Small challenges for big money skills. Learn, try again, and earn a reward once per mission.", "Pequenos desafios para aprender a cuidar do dinheiro. Aprenda, tente de novo e ganhe uma recompensa por missão."))}
     <div class="card stack"><span class="tag">${t(`${state.financeQuests.length} / ${financeMissions().length} completed`, `${state.financeQuests.length} / ${financeMissions().length} concluídas`)}</span>
-    <div class="choice-grid">${financeMissions().map(m => `<button class="choice" data-finance="${m.id}"><b>${state.financeQuests.includes(m.id) ? '✓ ' : ''}${m.title}</b><small>${m.description}</small><span class="tag">${state.financeQuests.includes(m.id) ? t("Review lesson", "Rever lição") : t(`Reward ${money(m.reward)}`, `Recompensa ${money(m.reward)}`)}</span></button>`).join('')}</div></div>`);
+    <div class="choice-grid">${financeMissions().map(m => `<button class="choice" data-finance="${m.id}"><b>${state.financeQuests.includes(m.id) ? '✓ ' : ''}${m.title}</b><small>${m.description}</small><small>${m.location === 'atlantic' ? '🌊 Atlantic City' : t('🏙 City', '🏙 Cidade')}</small><span class="tag">${state.financeQuests.includes(m.id) ? t("Review lesson", "Rever lição") : t(`Reward ${money(m.reward)}`, `Recompensa ${money(m.reward)}`)}</span></button>`).join('')}</div></div>`);
   el.querySelectorAll('[data-finance]').forEach(button => button.onclick = () => financeMission(button.dataset.finance));
 }
 
@@ -384,9 +392,11 @@ function financeMission(id) {
 }
 
 function travel(location) {
+  if (location === 'atlantic' && !world.canDive()) { toast(t('Swim to the glowing ring in the sea by the beach, then dive with E or C.', 'Nade até o círculo brilhante no mar da praia e mergulhe com E ou C.')); return; }
+  if (rent) { toast(t('Hide from Mr. Barriga before travelling.', 'Esconda-se do Sr. Barriga antes de viajar.')); return; }
   if (dispatch({ type: 'travel', location })) {
     stopRent(); trackedId = null; close(); scheduleRent();
-    toast(location === 'moon' ? t("Welcome back to the Moon! Use the rocket to return to the city.", "Bem-vindo de volta à Lua! Use o foguete para voltar à cidade.") : t("Welcome back to the city!", "Bem-vindo de volta à cidade!"), 'ok');
+    toast(location === 'atlantic' ? t('Atlantic City! Swim with WASD, rise with Space and descend with C. Find Poseidon at the golden castle.', 'Atlantic City! Nade com WASD, suba com Espaço e desça com C. Encontre Poseidon no castelo de ouro.') : location === 'moon' ? t("Welcome back to the Moon! Use the rocket to return to the city.", "Bem-vindo de volta à Lua! Use o foguete para voltar à cidade.") : t("Welcome back to the city!", "Bem-vindo de volta à cidade!"), 'ok');
   }
 }
 
@@ -441,7 +451,7 @@ function setupRoomRoster(el) {
       }
       // Reconcile by ID: frequent pose updates must not replace focused buttons.
       row.name.textContent = player.name;
-      row.place.textContent = player.location === 'moon' ? t('Moon', 'Lua') : t('City', 'Cidade');
+      row.place.textContent = player.location === 'atlantic' ? 'Atlantic City' : player.location === 'moon' ? t('Moon', 'Lua') : t('City', 'Cidade');
       row.host.textContent = t('Room creator', 'Criador da sala');
       row.host.classList.toggle('hidden', player.id !== multiplayer.hostId);
       row.remove.classList.toggle('hidden', !multiplayer.isHost || player.id === multiplayer.playerId);
@@ -536,9 +546,10 @@ function menuPanel() {
       ${languagePicker()}
       <p><b>${t("How to play:", "Como jogar:")}</b> ${TOUCH ? t("joystick to walk, swipe the right side of the screen to look, and use the big buttons to jump and act.", "use o controle para andar, deslize o lado direito da tela para olhar e use os botões grandes para pular e interagir.") : t("WASD or arrows to walk, drag the mouse to look around, Space to jump, E to interact.", "WASD ou setas para andar, arraste o mouse para olhar, Espaço para pular e E para interagir.")}</p>
       <p><b>${t("Rent alert:", "Alerta de aluguel:")}</b>${t(" when Mr. Barriga shows up you have 40 seconds to hide in a bush. If he finds you, rent is $200. If he doesn’t, you pocket $500!", " quando o Sr. Barriga aparecer, você terá 40 segundos para se esconder em um arbusto. Se ele encontrar você, o aluguel custa $200. Se não encontrar, você ganha $500!")}</p>
+      <p><b>🌊 Atlantic City:</b> ${t('Swim from the beach to the glowing ring, then dive with E or C. Space swims up and C swims down. Attack with Q or the on-screen button. Defeat Poseidon and his guards for the trident skin; explore 12 new finance lessons and drive turtle cars. Return through the bubble portal.', 'Nade da praia até o círculo brilhante e mergulhe com E ou C. Espaço nada para cima e C para baixo. Ataque com Q ou o botão na tela. Derrote Poseidon e seus guardas para liberar a skin de tridente; explore 12 novas lições financeiras e dirija carros tartaruga. Volte pelo portal de bolhas.')}</p>
       <p><b>${t("Chaos mode:", "Modo bagunça:")}</b>${t(" run or jump into the townsfolk llamas to send them flying. It’s free, it’s silly, and it teaches nothing about finance.", " corra ou pule nas lhamas da cidade para fazê-las voar. É grátis, é uma brincadeira e não ensina nada de finanças.")}</p>
-      <p><b>${t("A bigger adventure:", "Uma aventura maior:")}</b>${t(" find cars, gliders and the beach marina on the map. Use Action / E to enter or leave a vehicle. Fly with F, dance with B, and shoot Cyborg milk with Q. The on-screen buttons work on phones too.", " encontre carros, planadores e a marina da praia no mapa. Use Ação / E para entrar ou sair de um veículo. Voe com F, dance com B e atire leite com Q usando o Ciborgue. Os botões na tela também funcionam no celular.")}</p>
-      <div class="row"><button class="btn sky" data-friends>${t("👥 Play online", "👥 Jogar online")}</button><button class="btn sage" data-money-missions>${t("🎯 Money missions", "🎯 Missões financeiras")}</button>${state.stage === 'freeplay' ? `<button class="btn lilac" data-travel>🚀 ${state.location === 'moon' ? t("Return to the city", "Voltar à cidade") : t("Visit the Moon again", "Visitar a Lua de novo")}</button>` : ''}</div>
+      <p><b>${t("A bigger adventure:", "Uma aventura maior:")}</b>${t(" find cars, gliders and the beach marina on the map. Use Action / E to enter or leave a vehicle. Fly with F, dance with B, and attack with any skin using Q. The on-screen buttons work on phones too.", " encontre carros, planadores e a marina da praia no mapa. Use Ação / E para entrar ou sair de um veículo. Voe com F, dance com B e ataque com qualquer skin usando Q. Os botões na tela também funcionam no celular.")}</p>
+      <div class="row"><button class="btn sky" data-friends>${t("👥 Play online", "👥 Jogar online")}</button><button class="btn sage" data-money-missions>${t("🎯 Money missions", "🎯 Missões financeiras")}</button>${state.stage === 'freeplay' && state.location !== 'atlantic' ? `<button class="btn lilac" data-travel>🚀 ${state.location === 'moon' ? t("Return to the city", "Voltar à cidade") : t("Visit the Moon again", "Visitar a Lua de novo")}</button>` : ''}</div>
       <div class="row"><button class="btn ghost" data-mute>${icon(state.muted ? 'mute' : 'sound')}${t(" Sound ", " Som ")}${state.muted ? t("off", "desligado") : t("on", "ligado")}</button><button class="btn coral" data-reset>${icon('reset')}${t(" New game", " Novo jogo")}</button></div>
       <div class="settings-grid">
         <label>${t("Visual quality", "Qualidade visual")}<select data-quality><option value="high" ${settings.quality === 'high' ? 'selected' : ''}>${t("High · shadows & crisp detail", "Alta · sombras e detalhes nítidos")}</option><option value="balanced" ${settings.quality === 'balanced' ? 'selected' : ''}>${t("Balanced · smoother on mobile", "Equilibrada · melhor no celular")}</option></select></label>
@@ -574,7 +585,7 @@ function destination() {
 function mapPanel() {
   const mission = missionFor(state);
   const places = world.interactables.filter(it => world.available(it) && world.isOnLocation(it) && (it.type !== 'home' || world.plot.visible));
-  const el = open(`${head(t("A town full of possibilities", "Uma cidade cheia de possibilidades"), t("Pick a destination. The golden beacon and compass will guide you there.", "Escolha um destino. O sinal dourado e a bússola vão guiar você."))}
+  const el = open(`${head(state.location === 'atlantic' ? t('Atlantic City · lost underwater city', 'Atlantic City · cidade perdida submarina') : t("A town full of possibilities", "Uma cidade cheia de possibilidades"), t("Pick a destination. The golden beacon and compass will guide you there.", "Escolha um destino. O sinal dourado e a bússola vão guiar você."))}
     <div class="card stack"><button class="btn" data-auto>${icon('sparkles')}${t(" Follow my next mission", " Seguir minha próxima missão")}</button><div class="destination-grid">${places.map(it => {
       const job = JOBS.find(j => j.id === it.id), done = !!state.shifts[it.id], distance = Math.round(it.position.distanceTo(world.player.pos));
       return `<button class="choice ${it.id === (trackedId || mission.id) ? 'selected' : ''}" data-track="${it.id}"><span class="tag">${job ? (done ? t("✓ SHIFT COMPLETE", "✓ TURNO CONCLUÍDO") : t(`${money(job.pay)} / SHIFT`, `${money(job.pay)} / TURNO`)) : t("EXPLORE", "EXPLORAR")} · ${distance} m</span><b>${job ? nameLabel(job.name) : it.label}</b><small>${job ? nameLabel(job.description) : t("Set a waypoint and explore.", "Marque um destino e explore.")}</small></button>`;
@@ -708,11 +719,20 @@ function stopRent() { if (rent) { clearInterval(rent.timer); rent = null; world.
 world.onJump = () => sfx('jump');
 world.onLand = () => sfx('land');
 world.onNotice = message => { toast(message); if (!busy) canvas.focus({ preventScroll: true }); };
+world.onPoseidonDefeated = () => {
+  if (dispatch({ type: 'defeatPoseidon' })) {
+    award(t('Poseidon defeated!', 'Poseidon derrotado!'), t('Trident and shark attacks unlocked. Your new skin is ready!', 'Tridente e ataques de tubarão liberados. Sua nova skin está equipada!'));
+    world.burst(world.player.pos, 0xffd94d, 40); sfx('ok');
+  }
+};
 world.onFound = () => resolveRent(false);
 world.onCoin = id => { if (dispatch({ type: 'coin', id })) toast(t("Lucky coin! +$25", "Moeda da sorte! +$25"), 'coin'); };
 let bonks = 0;
 world.onBonk = npc => { bonks++; world.burst(npc.pos, 0xc8b4f2, 14); sfx('bonk'); if (bonks === 1) toast(t("BONK! 💫 Townsfolk go flying when you run into them.", "POFT! 💫 Os moradores voam quando você corre contra eles.")); };
 world.available = it => {
+  if (it.type === 'dive') return ['beginning', 'purchase', 'careers', 'business', 'freeplay'].includes(state.stage);
+  if (it.id === 'to-beach') return state.location === 'atlantic';
+  if (it.id === 'poseidon') return !state.poseidonDefeated && !world.atlanticGame?.active;
   if (it.type === 'travel') return state.stage === 'freeplay';
   if (it.type === 'moon') return state.stage === 'moon';
   if (it.type === 'finance') return !state.financeQuests.includes(it.id);
@@ -729,6 +749,8 @@ async function interact() {
   if (busy || !state.started) return;
   const it = world.nearby(); if (!it) return;
   switch (it.type) {
+    case 'dive': travel('atlantic'); break;
+    case 'boss': world.startPoseidon(); break;
     case 'vehicle': if (it.id === 'exit-vehicle') world.exitVehicle(); else if (rent) toast(t("Hide from Mr. Barriga first, then take a ride.", "Esconda-se do Sr. Barriga primeiro, depois vá passear.")); else world.useVehicle(it.id); break;
     case 'travel': travel(it.id === 'to-moon' ? 'moon' : 'city'); break;
     case 'finance': financeMission(it.id); break;
@@ -778,7 +800,8 @@ window.addEventListener('keydown', e => {
   if (!busy && state.started) {
     if (e.code === 'KeyB') world.toggleDance();
     if (e.code === 'KeyF') fly();
-    if (e.code === 'KeyQ') world.shootMilk();
+    if (e.code === 'KeyQ') world.attack();
+    if (e.code === 'KeyC') dive();
   }
 });
 new MutationObserver(() => {
@@ -797,7 +820,15 @@ $('[data-jump]').addEventListener('pointerdown', () => (world.jumpQueued = true)
 $('[data-dance]').onclick = () => { if (!busy) world.toggleDance(); };
 function fly() { if (busy) return; if (rent) toast(t("Hide from Mr. Barriga before taking off.", "Esconda-se do Sr. Barriga antes de decolar.")); else world.toggleFlight(); }
 $('[data-fly]').onclick = fly;
-$('[data-milk]').onclick = () => { if (!busy) { world.shootMilk(); canvas.focus({ preventScroll: true }); } };
+$('[data-attack]').onclick = () => { if (!busy) { world.attack(); canvas.focus({ preventScroll: true }); } };
+$('[data-attack]').addEventListener('pointerdown', event => { if (!busy) { world.attackHeld = true; event.currentTarget.setPointerCapture(event.pointerId); } });
+for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) $('[data-attack]').addEventListener(event, () => { world.attackHeld = false; });
+function dive() {
+  if (busy || world.vehicle) return;
+  if (world.location === 'atlantic') world.diveQueued = true;
+  else travel('atlantic');
+}
+$('[data-dive]').onclick = () => { dive(); canvas.focus({ preventScroll: true }); };
 $('[data-online]').onclick = () => { if (!busy) multiplayerPanel(); };
 hud.querySelectorAll('[data-open]').forEach(b => { b.setAttribute('aria-label', b.title); b.onclick = () => { if (busy) return; ({ map: mapPanel, wallet: walletPanel, wardrobe: wardrobePanel, report: reportPanel, menu: menuPanel, finance: financePanel, multiplayer: multiplayerPanel })[b.dataset.open](); }; });
 
@@ -834,7 +865,22 @@ function loop(now) {
     $('[data-fly]').classList.toggle('hidden', !status.canFly);
     $('[data-fly]').textContent = status.mode === 'flight' ? t("⬇ Land", "⬇ Pousar") : t("🚀 Fly", "🚀 Voar");
     $('[data-fly]').setAttribute('aria-pressed', String(status.mode === 'flight'));
-    $('[data-milk]').classList.toggle('hidden', !status.canShoot);
+    $('[data-attack]').disabled = !status.canAttack;
+    $('[data-attack]').textContent = { spit: t('💥 Attack', '💥 Atacar'), milk: t('🥛 Milk', '🥛 Leite'), tentacle: t('🐙 Tentacle', '🐙 Tentáculo'), shark: t('🦈 Shark', '🦈 Tubarão') }[status.attackKind];
+    $('[data-dive]').classList.toggle('hidden', !status.swimming);
+    $('[data-dive]').textContent = world.location === 'atlantic' ? t('↓ Descend', '↓ Descer') : t('🌊 Dive', '🌊 Mergulhar');
+    $('[data-jump]').innerHTML = `⬆<br>${status.swimming ? t('Rise', 'Subir') : t('Jump', 'Pular')}`;
+  }
+  const battle = world.getAtlanticStatus();
+  document.body.classList.toggle('boss-active', playing && battle.active);
+  $('[data-boss]').classList.toggle('hidden', !playing || !battle.active);
+  if (playing && battle.active) {
+    $('[data-boss-title]').textContent = t('POSEIDON · GOLDEN CASTLE', 'POSEIDON · CASTELO DE OURO');
+    $('[data-boss-hint]').textContent = battle.guards ? t(`Defeat ${battle.guards} guards to break the shield · Q to attack`, `Derrote ${battle.guards} guardas para quebrar o escudo · Q para atacar`) : t('Q / Attack · Face Poseidon · Dodge the glowing circles', 'Q / Atacar · Vire para Poseidon · Desvie dos círculos brilhantes');
+    $('[data-boss-label]').textContent = `Poseidon · ${Math.ceil(battle.bossHP)} / ${battle.maxBossHP}`;
+    $('[data-player-label]').textContent = t(`You · ${Math.ceil(battle.playerHP)} / ${battle.maxPlayerHP}`, `Você · ${Math.ceil(battle.playerHP)} / ${battle.maxPlayerHP}`);
+    $('[data-boss-hp]').max = battle.maxBossHP; $('[data-boss-hp]').value = battle.bossHP;
+    $('[data-player-hp]').max = battle.maxPlayerHP; $('[data-player-hp]').value = battle.playerHP;
   }
   $('[data-mission]').classList.toggle('hidden', !playing);
   $('[data-minimap]').classList.toggle('hidden', !playing || !settings.showMap);
@@ -842,6 +888,7 @@ function loop(now) {
   if (playing && now >= navigationAt) {
     navigationAt = now + 100;
     const target = destination(); world.setGuide(target);
+    $('[data-minimap] span').innerHTML = `${world.location === 'atlantic' ? 'ATLANTIC CITY' : world.location === 'moon' ? t('MOON', 'LUA') : t('LLAMA TOWN', 'CIDADE DAS LHAMAS')} <b>${t('MAP ↗', 'MAPA ↗')}</b>`;
     $('[data-route]').classList.toggle('hidden', !target);
     if (target) {
       const dx = target.position.x - world.player.pos.x, dz = target.position.z - world.player.pos.z, distance = Math.hypot(dx, dz);

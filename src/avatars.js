@@ -269,9 +269,117 @@ function katakuri() {
   return avatar;
 }
 
+function seaLlama(costume) {
+  const avatar = rig(costume), { body, head, legs } = avatar.userData;
+  const fish = costume === 'Fish Llama', marine = costume === 'Marine Llama';
+  const fur = material(fish ? 0x67d5cf : marine ? 0x4881bd : 0xd2f3ec);
+  const accent = material(fish ? 0xffae65 : marine ? 0xa89afa : 0xffd05b);
+  const pale = material(CREAM), dark = material(INK);
+  const finPaint = material(fish ? 0xffc37d : marine ? 0x86e0d3 : 0xffd05b, { side: THREE.DoubleSide });
+  head.position.set(1.05, 2.42, 0);
+  addMesh(body, capsule(0.52, 1.05), fur, 0, 1.22, 0).rotation.z = Math.PI / 2;
+  const neck = addMesh(body, capsule(0.26, 0.88), fur, 0.83, 1.85, 0); neck.rotation.z = 0.23;
+  addMesh(head, new THREE.BoxGeometry(0.73, 0.58, 0.6), fur);
+  addMesh(head, new THREE.BoxGeometry(0.4, 0.36, 0.45), fur, 0.46, -0.1, 0);
+  for (const side of [-1, 1]) {
+    addMesh(head, sphere(0.06, 8), dark, 0.68, -0.11, side * 0.12);
+    addMesh(head, sphere(0.12, 10), pale, 0.2, 0.14, side * 0.295);
+    addMesh(head, sphere(0.061, 8), dark, 0.25, 0.14, side * 0.38);
+    const ear = addMesh(head, new THREE.ConeGeometry(0.12, 0.47, 7), fur, -0.12, 0.48, side * 0.21);
+    ear.rotation.x = side * 0.27;
+    addMesh(head, sphere(0.085, 8), accent, 0.01, -0.1, side * 0.31).scale.z = 0.2;
+  }
+  for (const [x, z] of [[0.6, 0.32], [0.6, -0.32], [-0.6, 0.32], [-0.6, -0.32]]) {
+    const leg = new THREE.Group(); leg.position.set(x, 0.89, z);
+    addMesh(leg, capsule(0.125, 0.58), fur, 0, -0.35, 0);
+    addMesh(leg, new THREE.CylinderGeometry(0.17, 0.17, 0.15, 8), accent, 0, -0.78, 0);
+    legs.push(leg); body.add(leg);
+  }
+  if (fish) {
+    const fins = new THREE.Group(); fins.name = 'fish-fins';
+    panel(fins, [[-0.73, 1.56, 0], [-0.38, 2.22, 0], [0.4, 1.68, 0]], finPaint);
+    for (const side of [-1, 1]) {
+      panel(fins, [[0.15, 1.52, side * 0.46], [-0.55, 1.42, side * 1.02], [-0.45, 1.05, side * 0.48]], finPaint);
+      panel(fins, [[-1.03, 1.25, 0], [-1.65, 1.66, side * 0.15], [-1.5, 1.22, side * 0.23], [-1.65, 0.82, side * 0.15]], finPaint);
+      for (const x of [-0.56, -0.13, 0.3]) for (const y of [1.13, 1.42]) {
+        const scale = addMesh(body, new THREE.TorusGeometry(0.12, 0.018, 4, 10, Math.PI), pale, x, y, side * 0.505);
+        scale.rotation.z = -Math.PI / 2;
+      }
+    }
+    body.add(fins); avatar.userData.fins = fins;
+  } else if (marine) {
+    const tentacles = new THREE.Group(); tentacles.name = 'kraken-mantle';
+    for (const side of [-1, 1]) for (let i = 0; i < 2; i++) {
+      const x = -0.68 + i * 0.5;
+      curve(tentacles, [[x, 1.55, side * 0.42], [x - 0.25, 1.32, side * 0.75], [x - 0.35, 0.85, side * 0.88], [x - 0.05, 0.61, side * 0.91], [x + 0.16, 0.82, side * 0.86]], 0.09, accent);
+      for (let cup = 0; cup < 3; cup++) addMesh(tentacles, sphere(0.044, 8), pale, x - 0.3 + cup * 0.05, 1.2 - cup * 0.18, side * 0.96);
+    }
+    body.add(tentacles); avatar.userData.tentacles = tentacles;
+    const crest = addMesh(head, new THREE.ConeGeometry(0.24, 0.48, 6), finPaint, -0.1, 0.57, 0); crest.rotation.z = 0.18;
+    for (const side of [-1, 1]) panel(head, [[-0.25, 0.1, side * 0.25], [-0.52, 0.37, side * 0.61], [-0.45, -0.26, side * 0.49]], finPaint);
+    addMesh(body, sphere(0.2), accent, -1.1, 1.3, 0);
+  } else {
+    const crown = new THREE.Group(); crown.name = 'poseidon-crown';
+    addMesh(crown, new THREE.CylinderGeometry(0.37, 0.37, 0.13, 12), accent, 0, 0.39, 0);
+    for (let i = 0; i < 5; i++) {
+      const a = i * Math.PI * 2 / 5;
+      addMesh(crown, new THREE.ConeGeometry(0.085, 0.29, 5), accent, Math.cos(a) * 0.3, 0.59, Math.sin(a) * 0.3);
+    }
+    addMesh(crown, sphere(0.08, 8), material(0x48d7e5), 0.36, 0.42, 0);
+    head.add(crown);
+    for (const x of [-0.6, 0.4]) addMesh(body, new THREE.TorusGeometry(0.54, 0.07, 6, 16), accent, x, 1.22, 0).rotation.y = Math.PI / 2;
+    const trident = new THREE.Group(); trident.name = 'poseidon-trident'; trident.position.set(-0.23, 0, -0.58); trident.rotation.z = 0.18;
+    bone(trident, [0, 0.63, 0], [0, 3.12, 0], 0.055, accent);
+    bone(trident, [0, 2.94, -0.35], [0, 2.94, 0.35], 0.065, accent);
+    for (const z of [-0.35, 0, 0.35]) {
+      const tip = z === 0 ? 3.6 : 3.4;
+      bone(trident, [0, 2.94, z], [0, tip - 0.14, z], 0.045, accent);
+      addMesh(trident, new THREE.ConeGeometry(0.1, 0.28, 6), accent, 0, tip, z);
+    }
+    addMesh(trident, sphere(0.12, 8), material(0x48d7e5, { emissive: 0x1ca9c5, emissiveIntensity: 0.4 }), 0, 2.94, 0);
+    body.add(trident); avatar.userData.trident = trident;
+    addMesh(body, sphere(0.18), fur, -1.1, 1.35, 0);
+  }
+  return avatar;
+}
+
+/** Local attack effects face +X, matching every avatar's forward direction. */
+export function buildProjectile(kind = 'spit') {
+  const group = new THREE.Group(); group.name = `projectile-${kind}`; group.userData.projectileKind = kind;
+  if (kind === 'shark') {
+    const blue = material(0x5995bb), white = material(0xe2f8f5), dark = material(INK);
+    addMesh(group, sphere(0.43), blue).scale.set(2.25, 0.78, 0.86);
+    addMesh(group, sphere(0.32), white, 0.17, -0.15, 0).scale.set(2.15, 0.55, 0.86);
+    const fin = material(0x4281a7, { side: THREE.DoubleSide });
+    panel(group, [[-0.25, 0.24, 0], [-0.3, 0.88, 0], [0.32, 0.26, 0]], fin);
+    for (const side of [-1, 1]) {
+      panel(group, [[0.1, -0.06, side * 0.29], [-0.4, -0.28, side * 0.87], [-0.45, -0.1, side * 0.27]], fin);
+      addMesh(group, sphere(0.055, 8), dark, 0.57, 0.09, side * 0.29);
+      for (let i = 0; i < 3; i++) {
+        const gill = addMesh(group, new THREE.BoxGeometry(0.018, 0.13, 0.018), dark, 0.2 - i * 0.1, 0, side * 0.37);
+        gill.rotation.z = -0.2;
+      }
+    }
+    panel(group, [[-0.76, 0, 0], [-1.35, 0.6, 0], [-1.2, 0.01, 0], [-1.35, -0.48, 0]], fin);
+    curve(group, [[0.77, -0.12, -0.15], [0.88, -0.17, 0], [0.77, -0.12, 0.15]], 0.018, dark);
+  } else if (kind === 'tentacle') {
+    const purple = material(0xa68be8), cups = material(0xf4c0e4);
+    curve(group, [[-1.05, 0, 0], [-0.45, 0.14, 0], [0.2, -0.08, 0], [0.85, 0.12, 0], [1.15, 0.48, 0], [0.91, 0.7, 0], [0.71, 0.51, 0]], 0.15, purple);
+    for (let i = 0; i < 7; i++) addMesh(group, sphere(0.065, 8), cups, -0.9 + i * 0.26, -0.1 + Math.sin(i * 1.2) * 0.1, 0.13).scale.y = 0.65;
+  } else {
+    const paint = material(kind === 'milk' ? 0xfffaf0 : 0x9ae8ef, { transparent: kind !== 'milk', opacity: kind === 'milk' ? 1 : 0.82 });
+    addMesh(group, sphere(0.2, 10), paint).scale.x = 1.8;
+    for (let i = 0; i < 3; i++) addMesh(group, sphere(0.11 - i * 0.02, 8), paint, -0.4 - i * 0.22, 0.03 * i, 0);
+  }
+  return group;
+}
+
 /** Returns null for original llama costumes, preserving their existing factory. */
 export function buildAvatar(costume, bodyColor = 0xe1a27a) {
   switch (costume) {
+    case 'Fish Llama':
+    case 'Marine Llama':
+    case 'Poseidon Llama': return seaLlama(costume);
     case 'Superman': return superman();
     case 'Skeleton': return skeleton();
     case 'Dragon': return dragon();

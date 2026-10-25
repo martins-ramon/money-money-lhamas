@@ -68,11 +68,15 @@ export class PeerView {
       const difference = Math.atan2(Math.sin(heading - record.avatar.rotation.y), Math.cos(heading - record.avatar.rotation.y));
       record.avatar.rotation.y += difference * Math.min(1, dt * 14);
       const { body, legs } = record.avatar.userData;
-      const dance = p.dancing && !this.world.reducedMotion ? Math.sin(time * 9) : 0;
-      body.rotation.x = dance * .16; body.position.y = Math.abs(dance) * .25 + (p.costume === 'Grand hotel concierge' ? .55 : 0);
-      legs.forEach((leg, i) => { leg.rotation.z = (p.dancing ? dance * .6 : moving ? Math.sin(time * 13) * .5 : 0) * (i % 2 ? -1 : 1); });
+      const swimming = !p.flying && !p.vehicle && (p.location === 'atlantic' || (p.location === 'city' && p.x >= 67 && p.y <= 1));
+      const dance = p.dancing && !swimming && !this.world.reducedMotion ? Math.sin(time * 9) : 0;
+      const paddle = swimming && !this.world.reducedMotion ? Math.sin(time * 6) * .28 : 0;
+      body.rotation.x = dance * .16; body.rotation.z = swimming ? -.12 : 0;
+      body.position.y = Math.abs(dance) * .25 + Math.abs(paddle) * .2 + (p.costume === 'Grand hotel concierge' ? .55 : 0);
+      legs.forEach((leg, i) => { leg.rotation.z = (swimming ? paddle : p.dancing ? dance * .6 : moving ? Math.sin(time * 13) * .5 : 0) * (i % 2 ? -1 : 1); });
+      for (const [i, arm] of (record.avatar.userData.arms || []).entries()) arm.rotation.z = swimming ? paddle * (i ? -1 : 1) : 0;
       record.avatar.scale.setScalar(p.vehicle && p.vehicle !== 'glider' ? .65 : 1);
-      record.avatar.position.y = p.vehicle === 'yacht' ? 3 : p.vehicle === 'boat' ? 1.45 : p.vehicle === 'car' ? 1.2 : 0;
+      record.avatar.position.y = p.vehicle === 'yacht' ? 3 : p.vehicle === 'boat' ? 1.45 : p.vehicle === 'turtle' ? 1.6 : p.vehicle === 'car' ? 1.2 : 0;
       for (const thruster of record.avatar.userData.thrusters || []) thruster.visible = p.flying;
       for (const [i, wing] of (record.avatar.userData.wings || []).entries()) wing.rotation.x = this.world.reducedMotion ? 0 : Math.sin(time * (p.flying ? 8 : 2)) * (p.flying ? .45 : .08) * (i ? -1 : 1);
       if (record.vehicle) { record.vehicle.position.set(0, 0, 0); record.vehicle.rotation.y = heading; }

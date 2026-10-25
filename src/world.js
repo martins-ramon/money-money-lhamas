@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { movementInput } from './experience.js';
 import { JOBS } from './model.js';
-import { buildAvatar } from './avatars.js';
-import { buildCityExpansion, constrainAdventurePosition, CITY_LIMIT } from './world-expansion.js';
+import { buildAvatar, buildProjectile } from './avatars.js';
+import { buildCityExpansion, constrainAdventurePosition, CITY_LIMIT, WATER_X } from './world-expansion.js';
+import { buildAtlantic, updateAtlantic, startPoseidon, resetPoseidon, hitAtlantic, getAtlanticStatus, setPoseidonDefeated } from './atlantic.js';
 import { t } from './i18n.js';
 import { worldText, refreshWorldLabel } from './world-localization.js';
 
@@ -323,7 +324,8 @@ export class World {
     this.barriga = null; this.rentActive = false; this.onFound = () => {};
     this.clock = new THREE.Clock(); this.time = 0; this.available = () => true;
     this.stage = 'beginning'; this.location = 'city'; this.worldRadius = CITY_LIMIT;
-    this.vehicle = null; this.flying = false; this.dancing = false; this.onNotice = () => {};
+    this.vehicle = null; this.flying = false; this.dancing = false; this.swimming = false; this.diveQueued = false; this.onNotice = () => {};
+    this.onPoseidonDefeated = () => {}; this.attackHeld = false;
     this.milkShots = []; this.lastMilkShot = -10;
     this.#buildScene();
     this.#buildEffects();
@@ -429,6 +431,7 @@ export class World {
     const stars = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({ length: 900 }, (_, i) => (rnd(i, 11 + (i % 3)) - 0.5) * 240), 3)), new THREE.PointsMaterial({ color: 0xffffff, size: 0.6 })); this.moon.add(stars);
     this.interactables.push({ id: 'moonhouse', type: 'moon', label: 'Sign the Moon deal with Elo Musk', position: new THREE.Vector3(0, 0, -7), radius: 4, location: 'moon' });
     buildCityExpansion(this, { mat, mesh, building, car, tree, sign });
+    buildAtlantic(this, { mat, mesh, sign, car, buildLlama });
     this.refreshLanguage();
   }
   refreshLanguage() {
@@ -459,7 +462,7 @@ export class World {
     const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
   }
-  resetInput() { this.keys.clear(); this.joy.x = this.joy.y = 0; this.sprint = false; this.jumpQueued = false; this.jumpBuffer = 0; this.velocity.set(0, 0, 0); }
+  resetInput() { this.keys.clear(); this.joy.x = this.joy.y = 0; this.sprint = false; this.jumpQueued = false; this.diveQueued = false; this.attackHeld = false; this.jumpBuffer = 0; this.velocity.set(0, 0, 0); }
   applySettings(settings) {
     this.reducedMotion = settings.reducedMotion;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, settings.quality === 'high' ? 2 : 1.25));
@@ -511,9 +514,16 @@ export class World {
   }
   getAdventureStatus() {
     const costume = this.playerMesh.userData.costume;
-    const canFly = ['Superman', 'Cyborg', 'Dragon'].includes(costume);
-    const mode = this.vehicle?.type || (this.flying ? 'flight' : this.dancing ? 'dance' : 'walk');
-    return { mode, label: worldText({ car: 'Driving', boat: 'Sailing a boat', yacht: 'Sailing a yacht', glider: 'Gliding', flight: 'Flying', dance: 'Dancing', walk: 'Exploring' }[mode]), canFly, canShoot: costume === 'Cyborg', dancing: this.dancing, vehicle: this.vehicle?.type || null };
+    const canFly = this.location !== 'atlantic' && ['Superman', 'Cyborg', 'Dragon'].includes(costume);
+    const mode = this.vehicle?.type || (this.flying ? 'flight' : this.swimming ? 'swim' : this.dancing ? 'dance' : 'walk');
+    const attackKind = costume === 'Marine Llama' ? 'tentacle' : costume === 'Poseidon Llama' ? 'shark' : costume === 'Cyborg' ? 'milk' : 'spit';
+    return { mode, label: worldText({ car: 'Driving', turtle: 'Driving a turtle car', boat: 'Sailing a boat', yacht: 'Sailing a yacht', glider: 'Gliding', flight: 'Flying', swim: 'Swimming', dance: 'Dancing', walk: 'Exploring' }[mode]), canFly, canShoot: costume === 'Cyborg', canAttack: !this.vehicle, attackKind, swimming: !!this.swimming, dancing: this.dancing, vehicle: this.vehicle?.type || null };
+  }
+  getAtlanticStatus() { return getAtlanticStatus(this); }
+  startPoseidon() { return startPoseidon(this); }
+  canDive() {
+    const gate = this.interactables.find(it => it.id === 'to-atlantic');
+    return this.location === 'city' && this.swimming && !this.vehicle && !this.flying && !!gate && this.player.pos.distanceTo(gate.position) < gate.radius;
   }
   createVehicleMesh(type) {
     const source = [...this.vehicles.values()].find(vehicle => vehicle.type === type);
@@ -523,10 +533,10 @@ export class World {
   useVehicle(id) {
     if (id === 'exit-vehicle') return this.exitVehicle();
     const vehicle = this.vehicles.get(id);
-    if (!vehicle || this.frozen || this.location !== 'city' || this.vehicle) return false;
+    if (!vehicle || this.frozen || this.location !== (vehicle.location || 'city') || this.vehicle || this.atlanticGame?.active) return false;
     const it = this.interactables.find(item => item.id === id);
     if (this.player.pos.distanceTo(it.position) > it.radius + 0.5) return false;
-    this.vehicle = vehicle; this.flying = false; this.dancing = false; this.resetInput();
+    this.vehicle = vehicle; this.flying = false; this.dancing = false; this.swimming = false; this.resetInput();
     this.player.pos.copy(vehicle.mesh.position); this.player.vy = 0; this.player.heading = vehicle.heading;
     if (vehicle.type === 'glider') { this.player.pos.y = 19; this.player.grounded = false; }
     else this.player.grounded = true;
@@ -547,7 +557,7 @@ export class World {
     }
     this.vehicle = null; this.playerMesh.scale.setScalar(1); this.playerMesh.rotation.x = this.playerMesh.rotation.z = 0;
     this.player.vy = Math.min(0, this.player.vy); this.player.grounded = this.player.pos.y <= 0;
-    constrainAdventurePosition(this.player.pos, { location: this.location, airborne: this.player.pos.y > 3 }); this.resetInput();
+    constrainAdventurePosition(this.player.pos, { location: this.location, airborne: this.player.pos.y > 3, swimming: true }); this.resetInput();
     if (notify) this.onNotice(worldText(sailing ? 'Back at the dock. Your boat is ready for another trip!' : 'You left the vehicle.'));
     return true;
   }
@@ -558,16 +568,35 @@ export class World {
     this.onNotice(worldText(this.flying ? 'Flight on! Use your movement controls. Tap Fly again to land.' : 'Landing…')); return true;
   }
   toggleDance() {
-    if (this.frozen || this.vehicle || this.flying || !this.player.grounded) return false;
+    if (this.frozen || this.vehicle || this.flying || this.swimming || !this.player.grounded) return false;
     this.dancing = !this.dancing; this.onNotice(worldText(this.dancing ? 'Dance time! Move to stop.' : 'Dance stopped.')); return true;
   }
   shootMilk() {
-    if (this.frozen || this.vehicle || !this.getAdventureStatus().canShoot || this.time - this.lastMilkShot < 0.28) return false;
+    if (!this.getAdventureStatus().canShoot) return false;
+    return this.attack();
+  }
+  attack() {
+    if (this.frozen || this.vehicle || this.time - this.lastMilkShot < 0.34 || this.milkShots.length >= 12) return false;
     this.lastMilkShot = this.time;
     const direction = new THREE.Vector3(Math.sin(this.player.heading), 0, Math.cos(this.player.heading));
-    const projectile = mesh(new THREE.SphereGeometry(0.18, 8, 6), mat(0xfffaf0, { emissive: 0xffffff, emissiveIntensity: 0.2 }), 0, 0, 0, false);
-    projectile.position.copy(this.player.pos).addScaledVector(direction, 1.8); projectile.position.y += 1.8;
-    this.scene.add(projectile); this.milkShots.push({ mesh: projectile, velocity: direction.multiplyScalar(28), life: 1.35, location: this.location });
+    // A small forward cone keeps moving targets reachable with keyboard or touch.
+    const origin = this.player.pos.clone().add(new THREE.Vector3(0, 1.8, 0));
+    if (this.location === 'atlantic' && this.atlanticGame?.active) {
+      const guardsAlive = this.atlanticGame.guards.some(guard => guard.hp > 0);
+      let closest = 30, aim = null;
+      for (const enemy of this.atlanticGame.enemies) {
+        if (enemy.hp <= 0 || (enemy.boss && guardsAlive)) continue;
+        const offset = enemy.mesh.position.clone().add(new THREE.Vector3(0, enemy.height / 2, 0)).sub(origin);
+        const horizontal = new THREE.Vector3(offset.x, 0, offset.z), distance = offset.length();
+        if (distance < closest && horizontal.normalize().dot(direction) > 0.72) { closest = distance; aim = offset; }
+      }
+      if (aim) direction.copy(aim.normalize());
+    }
+    const kind = this.getAdventureStatus().attackKind;
+    const projectile = buildProjectile(kind);
+    projectile.position.copy(origin).addScaledVector(direction, 1.1);
+    projectile.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), direction);
+    this.scene.add(projectile); this.milkShots.push({ mesh: projectile, previous: projectile.position.clone(), velocity: direction.multiplyScalar(28), kind, damage: kind === 'shark' ? 28 : kind === 'tentacle' ? 22 : 18, radius: kind === 'tentacle' ? 0.8 : 0.4, life: 1.35, location: this.location });
     this.burst(projectile.position, 0xfffaf0, 3); return true;
   }
   clearMilkShots() {
@@ -576,8 +605,9 @@ export class World {
   }
   #updateMilk(dt) {
     for (let i = this.milkShots.length - 1; i >= 0; i--) {
-      const shot = this.milkShots[i]; shot.life -= dt; shot.mesh.position.addScaledVector(shot.velocity, dt);
-      if (shot.location === 'city') for (const npc of this.npcs) {
+      const shot = this.milkShots[i]; shot.life -= dt; shot.previous.copy(shot.mesh.position); shot.mesh.position.addScaledVector(shot.velocity, dt);
+      if (hitAtlantic(this, shot)) { this.burst(shot.mesh.position, 0x75fff0, 12); shot.life = 0; }
+      if (shot.life > 0 && shot.location === 'city') for (const npc of this.npcs) {
         if (npc.state === 'fly' || shot.mesh.position.distanceTo(npc.pos.clone().add(new THREE.Vector3(0, 1.5, 0))) > 1.1) continue;
         npc.state = 'dazed'; npc.timer = 1.2; npc.speed = 0; this.burst(shot.mesh.position, 0xfffaf0, 16); shot.life = 0; break;
       }
@@ -622,15 +652,22 @@ export class World {
     this.girlfriend.visible = rich; this.girlfriend.position.set(4, 0, 25); this.girlfriend.rotation.y = Math.PI / 2;
     this.hqGroup.visible = ['business', 'moon', 'freeplay'].includes(stage); this.hqObstacle.r = this.hqGroup.visible ? 4.4 : 0;
     this.location = state?.location || (stage === 'moon' ? 'moon' : 'city');
-    const onMoon = this.location === 'moon';
-    this.moon.visible = onMoon; this.city.visible = !onMoon;
-    this.scene.background.set(onMoon ? 0x0b0d1a : PALETTE.sky); this.scene.fog.color.set(onMoon ? 0x0b0d1a : PALETTE.sky); this.scene.fog.near = onMoon ? 90 : 72; this.scene.fog.far = onMoon ? 160 : 185;
-    this.hemi.intensity = onMoon ? 0.5 : 1.1; this.hemi.groundColor.set(onMoon ? 0x444a66 : 0x9dd39a);
+    const onMoon = this.location === 'moon', underwater = this.location === 'atlantic';
+    this.moon.visible = onMoon; this.city.visible = !onMoon && !underwater;
+    this.atlantic.visible = underwater;
+    const sky = underwater ? 0x12657e : onMoon ? 0x0b0d1a : PALETTE.sky;
+    this.scene.background.set(sky); this.scene.fog.color.set(sky); this.scene.fog.near = underwater ? 35 : onMoon ? 90 : 72; this.scene.fog.far = underwater ? 105 : onMoon ? 160 : 185;
+    this.hemi.intensity = onMoon ? 0.5 : 1.1; this.hemi.groundColor.set(underwater ? 0x2dafa0 : onMoon ? 0x444a66 : 0x9dd39a);
+    if (underwater) this.girlfriend.visible = false;
     if (onMoon) { this.girlfriend.visible = true; this.girlfriend.position.set(3, 0, 2); this.girlfriend.rotation.y = Math.PI; }
     if (previousLocation !== this.location) {
-      this.exitVehicle(false); this.flying = false; this.dancing = false; this.clearMilkShots(); this.resetInput();
-      this.player.pos.set(onMoon ? 0 : 32, 0, onMoon ? 6 : 40); this.player.vy = 0; this.player.grounded = true;
+      this.exitVehicle(false); this.flying = false; this.dancing = false; this.clearMilkShots(); this.resetInput(); resetPoseidon(this); this.stopRent();
+      this.player.pos.set(underwater || onMoon ? 0 : previousLocation === 'atlantic' ? 63 : 32, underwater ? 0.5 : 0, underwater ? 30 : onMoon ? 6 : previousLocation === 'atlantic' ? 35 : 40); this.player.vy = 0; this.player.grounded = !underwater;
+      this.swimming = underwater; this.yaw = 0;
+      this.camera.position.set(this.player.pos.x, this.player.pos.y + 1.6 + Math.sin(this.pitch) * this.distance, this.player.pos.z + Math.cos(this.pitch) * this.distance);
+      this.camera.lookAt(this.player.pos.x, this.player.pos.y + 1.8, this.player.pos.z);
     }
+    setPoseidonDefeated(this, !!state?.poseidonDefeated);
     if (stage === 'robbery' && previousStage !== stage) {
       this.player.pos.set(0, 0, 18); this.player.heading = 0; this.playerMesh.rotation.y = -Math.PI / 2;
       this.yaw = Math.PI; this.pitch = 0.35; this.resetInput();
@@ -681,7 +718,7 @@ export class World {
     constrainAdventurePosition(npc.target); npc.timer = 4 + Math.random() * 6;
   }
   #updateNpcs(dt) {
-    if (this.location === 'moon') return;
+    if (this.location !== 'city') return;
     const p = this.player;
     for (const npc of this.npcs) {
       const { mesh: m } = npc;
@@ -716,7 +753,8 @@ export class World {
     const sprinting = !this.frozen && (this.sprint || this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) && input.amount > 0;
     const riding = this.vehicle, gliding = riding?.type === 'glider';
     const sailing = ['boat', 'yacht'].includes(riding?.type);
-    const topSpeed = riding ? { car: 19, boat: 15, yacht: 11, glider: 14 }[riding.type] : this.flying ? 16 : sprinting ? 11.5 : 7.5;
+    this.swimming = !riding && !this.flying && (this.location === 'atlantic' || (this.location === 'city' && p.pos.x >= WATER_X && p.pos.y < 2));
+    const topSpeed = riding ? { car: 19, turtle: 13, boat: 15, yacht: 11, glider: 14 }[riding.type] : this.flying ? 16 : this.swimming ? sprinting ? 9 : 6.5 : sprinting ? 11.5 : 7.5;
     const targetVelocity = gliding && !input.amount
       ? new THREE.Vector3(Math.sin(p.heading) * topSpeed, 0, Math.cos(p.heading) * topSpeed)
       : new THREE.Vector3(input.x * topSpeed, 0, input.z * topSpeed);
@@ -728,25 +766,32 @@ export class World {
     p.speed = this.velocity.length();
     if (this.jumpQueued) this.jumpBuffer = 0.15;
     else this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
-    if (this.jumpBuffer > 0 && p.grounded && !this.frozen && !riding && !this.flying) { p.vy = 8.5; p.grounded = false; this.jumpBuffer = 0; this.burst(p.pos, 0xfffaf0, 8); this.onJump(); }
+    if (this.jumpBuffer > 0 && p.grounded && !this.frozen && !riding && !this.flying && !this.swimming) { p.vy = 8.5; p.grounded = false; this.jumpBuffer = 0; this.burst(p.pos, 0xfffaf0, 8); this.onJump(); }
+    if (this.swimming && !this.frozen && this.location === 'atlantic') {
+      if (this.jumpQueued) p.pos.y += 0.7;
+      if (this.diveQueued) p.pos.y -= 0.7;
+      p.pos.y = THREE.MathUtils.clamp(p.pos.y + (Number(this.keys.has('Space')) - Number(this.keys.has('KeyC'))) * dt * 4, 0, 8);
+    }
     this.jumpQueued = false;
+    this.diveQueued = false;
     if (!this.frozen) {
-      if (this.flying) { p.pos.y += (16 - p.pos.y) * (1 - Math.exp(-2.5 * dt)); p.vy = 0; p.grounded = false; }
+      if (this.swimming) { if (this.location === 'city') p.pos.y += (-0.5 - p.pos.y) * (1 - Math.exp(-8 * dt)); p.vy = 0; p.grounded = false; }
+      else if (this.flying) { p.pos.y += (16 - p.pos.y) * (1 - Math.exp(-2.5 * dt)); p.vy = 0; p.grounded = false; }
       else if (riding && !gliding) { p.pos.y = 0; p.vy = 0; p.grounded = true; }
       else {
         p.vy = gliding ? -1.5 : p.vy - (this.location === 'moon' ? 11 : 22) * dt;
         p.pos.y = Math.max(0, p.pos.y + p.vy * dt);
       }
-      if (p.pos.y === 0) { if (!p.grounded) { this.burst(p.pos, 0xfffaf0, 12); this.onLand(); } p.vy = 0; p.grounded = true; }
+      if (p.pos.y === 0 && !this.swimming) { if (!p.grounded) { this.burst(p.pos, 0xfffaf0, 12); this.onLand(); } p.vy = 0; p.grounded = true; }
     }
     // bounds + obstacles
-    constrainAdventurePosition(p.pos, { location: this.location, vehicle: riding, airborne: p.pos.y > 3 });
-    if (this.location !== 'moon' && !sailing) for (const o of this.obstacles) {
+    constrainAdventurePosition(p.pos, { location: this.location, vehicle: riding, airborne: p.pos.y > 3, swimming: true });
+    if (this.location !== 'moon' && !sailing) for (const o of this.location === 'atlantic' ? this.atlanticObstacles : this.obstacles) {
       if (o.r <= 0 || p.pos.y > (o.height || 10)) continue;
-      const dx = p.pos.x - o.x, dz = p.pos.z - o.z, d = Math.hypot(dx, dz), radius = o.r + (riding?.type === 'car' ? 1.4 : 0.6);
+      const dx = p.pos.x - o.x, dz = p.pos.z - o.z, d = Math.hypot(dx, dz), radius = o.r + (['car', 'turtle'].includes(riding?.type) ? 1.4 : 0.6);
       if (d < radius) { if (d > 0.001) { const push = (radius - d) / d; p.pos.x += dx * push; p.pos.z += dz * push; } else p.pos.x += radius; }
     }
-    constrainAdventurePosition(p.pos, { location: this.location, vehicle: riding, airborne: p.pos.y > 3 });
+    constrainAdventurePosition(p.pos, { location: this.location, vehicle: riding, airborne: p.pos.y > 3, swimming: true });
     if (riding) {
       riding.mesh.position.copy(p.pos); riding.heading = p.heading;
       riding.mesh.rotation.y = p.heading - Math.PI / 2;
@@ -757,13 +802,14 @@ export class World {
     // animate player
     const m = this.playerMesh; m.position.copy(p.pos);
     m.scale.setScalar(this.vehicle && !gliding ? 0.65 : 1);
-    if (this.vehicle && !gliding) m.position.y += sailing ? this.vehicle.type === 'yacht' ? 3 : 1.45 : 1.2;
+    if (this.vehicle && !gliding) m.position.y += sailing ? this.vehicle.type === 'yacht' ? 3 : 1.45 : this.vehicle.type === 'turtle' ? 1.6 : 1.2;
     let target = p.heading - Math.PI / 2; let diff = target - m.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); m.rotation.y += diff * Math.min(1, dt * 12);
     const { legs, body, head } = m.userData; const swing = Math.sin(this.time * 14) * 0.6 * (this.vehicle || this.flying ? 0 : p.speed / 7.5);
     legs.forEach((l, i) => (l.rotation.z = swing * (i % 2 ? -1 : 1) * (i < 2 ? 1 : -1)));
     body.position.y = (head ? 0 : 0) + Math.abs(Math.sin(this.time * 14)) * 0.08 * (p.speed / 7.5) + (m.userData.costume === 'Grand hotel concierge' ? 0.55 : 0);
     head.rotation.z = Math.sin(this.time * 2) * 0.05;
-    m.rotation.z = this.flying ? -0.13 : 0;
+    m.rotation.z = this.flying ? -0.13 : this.swimming ? -0.18 : 0;
+    if (this.swimming && !this.reducedMotion) body.position.y += Math.sin(this.time * 3) * 0.12;
     if (this.dancing && !this.reducedMotion) {
       body.position.y += Math.abs(Math.sin(this.time * 9)) * 0.4;
       m.rotation.y += Math.sin(this.time * 5) * 0.08; m.rotation.z = Math.sin(this.time * 9) * 0.12;
@@ -778,16 +824,16 @@ export class World {
     // friends / decor
     if (this.girlfriend.visible) this.girlfriend.userData.head.rotation.z = Math.sin(this.time * 1.5) * 0.08;
     for (const [, c] of this.coins) { c.rotation.z += dt * 2.5; c.position.y = 1 + Math.sin(this.time * 3 + c.position.x) * 0.15; }
-    for (const [id, c] of this.coins) if (!this.frozen && this.location !== 'moon' && c.visible && c.position.distanceTo(p.pos) < 1.8) { this.burst(c.position, 0xffd94d, 22); c.visible = false; this.onCoin(id); }
+    for (const [id, c] of this.coins) if (!this.frozen && this.location === 'city' && c.visible && c.position.distanceTo(p.pos) < 1.8) { this.burst(c.position, 0xffd94d, 22); c.visible = false; this.onCoin(id); }
     for (const c of this.clouds) { c.position.x += dt * 0.6; if (c.position.x > 70) c.position.x = -70; }
     for (const q of Object.values(this.questMarkers)) if (q.visible) { q.userData.star.rotation.y += dt * 2; q.userData.star.position.y = 4 + Math.sin(this.time * 2) * 0.3; }
     this.#updateBarriga(dt);
-    if (!this.frozen) { this.#updateNpcs(dt); this.#updateMilk(dt); }
+    if (!this.frozen) { this.#updateNpcs(dt); updateAtlantic(this, dt, this.time); if (this.keys.has('KeyQ') || this.attackHeld) this.attack(); this.#updateMilk(dt); }
     this.#updateEffects(dt);
     if (this.location !== 'moon') this.waveLines.forEach((wave, i) => { wave.position.x = 68 + (i % 4) * 6 + (this.reducedMotion ? 0 : Math.sin(this.time * 0.6 + i) * 0.5); });
     if (this.location !== 'moon') this.fountainDrops.forEach((drop, i) => { const t = ((this.reducedMotion ? 0 : this.time * 0.65) + i / 24) % 1, a = i * 2.4; drop.position.set(Math.cos(a) * t * 1.3, 0.85 + Math.sin(t * Math.PI) * 2.1, Math.sin(a) * t * 1.3); });
     // camera
-    const mansionProximity = this.mansionGroup?.visible && this.location !== 'moon' ? THREE.MathUtils.clamp((24 - Math.hypot(p.pos.x, p.pos.z - 32)) / 10, 0, 1) : 0;
+    const mansionProximity = this.mansionGroup?.visible && this.location === 'city' ? THREE.MathUtils.clamp((24 - Math.hypot(p.pos.x, p.pos.z - 32)) / 10, 0, 1) : 0;
     const framingDistance = THREE.MathUtils.lerp(Math.max(this.distance, sailing ? 15 : riding ? 12 : 0), Math.max(this.distance, mansionViewDistance(this.camera.aspect)), mansionProximity);
     const desired = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch)).multiplyScalar(framingDistance).add(p.pos).add(new THREE.Vector3(0, 1.6, 0));
     desired.y = Math.max(desired.y, 0.8);

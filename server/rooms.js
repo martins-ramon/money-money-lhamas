@@ -1,8 +1,8 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { EXTRA_COSTUMES, JOBS } from '../src/model.js';
+import { EXTRA_COSTUMES, JOBS, POSEIDON_COSTUME } from '../src/model.js';
 
-const COSTUMES = new Set(['Street dreamer', 'Fresh streetwear', 'Lunar billionaire', ...EXTRA_COSTUMES, ...JOBS.map(job => job.costume)]);
-const VEHICLES = new Set([null, 'car', 'boat', 'yacht', 'glider']);
+const COSTUMES = new Set(['Street dreamer', 'Fresh streetwear', 'Lunar billionaire', POSEIDON_COSTUME, ...EXTRA_COSTUMES, ...JOBS.map(job => job.costume)]);
+const VEHICLES = new Set([null, 'car', 'boat', 'yacht', 'glider', 'turtle']);
 const CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const initialPose = () => ({ x: 0, y: 0, z: 0, heading: 0, costume: 'Street dreamer', character: 'anna', location: 'city', vehicle: null, dancing: false, flying: false });
@@ -13,7 +13,7 @@ export function validateSnapshot(snapshot) {
   for (const [key, min, max] of [['x', -256, 256], ['z', -256, 256], ['y', -5, 128], ['heading', -1e6, 1e6]]) {
     if (!Number.isFinite(snapshot[key]) || snapshot[key] < min || snapshot[key] > max) throw error(400, 'Player coordinates are out of range.');
   }
-  if (!COSTUMES.has(snapshot.costume) || !['anna', 'carlos'].includes(snapshot.character) || !['city', 'moon'].includes(snapshot.location) || !VEHICLES.has(snapshot.vehicle) || typeof snapshot.dancing !== 'boolean' || typeof snapshot.flying !== 'boolean') throw error(400, 'Send valid appearance and movement settings.');
+  if (!COSTUMES.has(snapshot.costume) || !['anna', 'carlos'].includes(snapshot.character) || !['city', 'moon', 'atlantic'].includes(snapshot.location) || !VEHICLES.has(snapshot.vehicle) || typeof snapshot.dancing !== 'boolean' || typeof snapshot.flying !== 'boolean') throw error(400, 'Send valid appearance and movement settings.');
   return { x: snapshot.x, y: snapshot.y, z: snapshot.z, heading: snapshot.heading % (Math.PI * 2), costume: snapshot.costume, character: snapshot.character, location: snapshot.location, vehicle: snapshot.vehicle, dancing: snapshot.dancing, flying: snapshot.flying };
 }
 

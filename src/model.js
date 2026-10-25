@@ -2,7 +2,9 @@ import { FINANCE_MISSIONS } from './finance-missions.js';
 import { locale } from './i18n.js';
 
 export const SAVE_KEY = 'money-money-lhamas-v1';
-export const EXTRA_COSTUMES = ['Superman', 'Charlotte Katakuri', 'Skeleton', 'Dragon', 'Cyborg', 'Human', 'Zombie'];
+export const EXTRA_COSTUMES = ['Superman', 'Charlotte Katakuri', 'Skeleton', 'Dragon', 'Cyborg', 'Human', 'Zombie', 'Fish Llama', 'Marine Llama'];
+export const POSEIDON_COSTUME = 'Poseidon Llama';
+const ATLANTIC_STAGES = ['beginning', 'purchase', 'careers', 'business', 'freeplay'];
 export const JOBS = [
   { id: 'burger', name: 'McLlama’s', role: 'Burger crew', icon: 'burger', pay: 400, color: 'peach', costume: 'Ronald McLlama', task: 'Build 5 perfect burgers', description: 'Big buns. Bigger ambitions.', location: [-11, -5] },
   { id: 'school', name: 'Sunny Hooves School', role: 'School janitor', icon: 'broom', pay: 400, color: 'sage', costume: 'Mop-top & cleaning cart', task: 'Clean up 8 muddy spots', description: 'A clean start to your fortune.', location: [10, -8] },
@@ -25,7 +27,7 @@ export const initialState = () => ({
   interest: 0, shifts: {}, stage: 'beginning', location: 'city', costume: 'Street dreamer', costumes: ['Street dreamer', ...EXTRA_COSTUMES],
   asset: null, assetColor: '#e5aa7e', assetStyle: 'classic', company: 0, businessIncome: 0,
   holdings: {}, prices: Object.fromEntries(STOCKS.map(s => [s.id, s.price])),
-  ledger: [], collectibles: [], sideQuests: [], financeQuests: [], celebration: false, rentEscapes: 0, muted: true,
+  ledger: [], collectibles: [], sideQuests: [], financeQuests: [], poseidonDefeated: false, celebration: false, rentEscapes: 0, muted: true,
 });
 export const liquid = s => round(s.wallet + s.savings);
 export const portfolio = s => round(STOCKS.reduce((sum, stock) => sum + (s.holdings[stock.id] || 0) * s.prices[stock.id], 0));
@@ -90,6 +92,7 @@ export function act(state, action) {
       s.assetColor = action.color; s.assetStyle = action.style; break;
     case 'costume':
       if (!s.costumes.includes(action.costume)) throw new Error('Complete the related job to unlock this outfit.');
+      if (action.costume === POSEIDON_COSTUME && !s.poseidonDefeated) throw new Error('Defeat Poseidon in Atlantic City to unlock this outfit.');
       s.costume = action.costume; break;
     case 'rent':
       if (action.hidden) { credit(s, 'Outsmarted Mr. Barriga!', 500); s.rentEscapes++; }
@@ -139,9 +142,17 @@ export function act(state, action) {
       if (s.stage !== 'moon') throw new Error('Reach a billion dollars first.');
       s.stage = 'freeplay'; s.location = 'city'; break;
     case 'travel':
-      if (!s.started || s.stage !== 'freeplay') throw new Error('Finish your first Moon adventure to unlock return trips.');
-      if (!['city', 'moon'].includes(action.location)) throw new Error('Choose the city or the Moon.');
+      if (!['city', 'moon', 'atlantic'].includes(action.location)) throw new Error('Choose the city or the Moon, or dive into Atlantic City.');
+      if (!s.started || (action.location === 'moon' ? s.stage !== 'freeplay' : !ATLANTIC_STAGES.includes(s.stage))) throw new Error('Finish your first Moon adventure to unlock return trips.');
       s.location = action.location; break;
+    case 'defeatPoseidon':
+      if (!s.started || s.location !== 'atlantic' || !ATLANTIC_STAGES.includes(s.stage)) throw new Error('Face Poseidon in Atlantic City first.');
+      if (s.poseidonDefeated) break;
+      s.poseidonDefeated = true;
+      if (!s.costumes.includes(POSEIDON_COSTUME)) s.costumes.push(POSEIDON_COSTUME);
+      s.costume = POSEIDON_COSTUME;
+      record(s, 'Defeated Poseidon · trident outfit unlocked', 0);
+      break;
     case 'financeQuest': {
       const mission = FINANCE_MISSIONS.find(m => m.id === action.id);
       if (!s.started || !mission || s.financeQuests.includes(action.id)) throw new Error('That finance mission is not available.');
@@ -175,18 +186,21 @@ export function loadGame(storage) {
     if (!saved.shifts || !saved.holdings || !saved.prices || typeof saved.shifts !== 'object' || typeof saved.holdings !== 'object') return base;
     if (JOBS.some(j => saved.shifts[j.id] !== undefined && (!Number.isSafeInteger(saved.shifts[j.id]) || saved.shifts[j.id] < 0))) return base;
     if (STOCKS.some(s => !Number.isFinite(saved.prices[s.id]) || saved.prices[s.id] < 10 || saved.prices[s.id] > 1e12 || (saved.holdings[s.id] !== undefined && (!Number.isSafeInteger(saved.holdings[s.id]) || saved.holdings[s.id] < 0)))) return base;
-    const outfits = ['Street dreamer', 'Fresh streetwear', 'Lunar billionaire', ...JOBS.map(j => j.costume), ...EXTRA_COSTUMES];
+    if (saved.poseidonDefeated !== undefined && typeof saved.poseidonDefeated !== 'boolean') return base;
+    const outfits = ['Street dreamer', 'Fresh streetwear', 'Lunar billionaire', ...JOBS.map(j => j.costume), ...EXTRA_COSTUMES, POSEIDON_COSTUME];
     if (!Array.isArray(saved.costumes) || saved.costumes.some(c => !outfits.includes(c)) || !saved.costumes.includes(saved.costume)) return base;
+    if (!saved.poseidonDefeated && saved.costumes.includes(POSEIDON_COSTUME)) return base;
     if (![null, 'house', 'car'].includes(saved.asset) || !/^#[0-9a-f]{6}$/i.test(saved.assetColor) || !['classic', 'sporty', 'cozy'].includes(saved.assetStyle)) return base;
     if (!Array.isArray(saved.collectibles) || saved.collectibles.some(n => !Number.isInteger(n) || n < 0 || n > 11)) return base;
     if (!Array.isArray(saved.sideQuests) || saved.sideQuests.some(q => !['picnic', 'explorer', 'helper'].includes(q)) || !Array.isArray(saved.ledger) || typeof saved.celebration !== 'boolean') return base;
     if (saved.ledger.some(e => !e || typeof e.label !== 'string' || !Number.isFinite(e.amount) || !Number.isFinite(e.date))) return base;
     if (saved.financeQuests !== undefined && (!Array.isArray(saved.financeQuests) || saved.financeQuests.some(id => !FINANCE_MISSIONS.some(m => m.id === id)) || new Set(saved.financeQuests).size !== saved.financeQuests.length)) return base;
     const location = saved.location ?? (saved.stage === 'moon' ? 'moon' : 'city');
-    if (!['city', 'moon'].includes(location) || (saved.stage === 'moon' && location !== 'moon') || (location === 'moon' && !['moon', 'freeplay'].includes(saved.stage))) return base;
+    if (!['city', 'moon', 'atlantic'].includes(location) || (saved.stage === 'moon' && location !== 'moon') || (location === 'moon' && !['moon', 'freeplay'].includes(saved.stage))) return base;
+    if (location === 'atlantic' && (!saved.started || !ATLANTIC_STAGES.includes(saved.stage))) return base;
     const restored = Object.fromEntries(Object.keys(base).map(key => [key, saved[key] ?? base[key]]));
     restored.location = location;
-    restored.costumes = [...new Set([...saved.costumes, ...EXTRA_COSTUMES])];
+    restored.costumes = [...new Set([...saved.costumes, ...EXTRA_COSTUMES, ...(restored.poseidonDefeated ? [POSEIDON_COSTUME] : [])])];
     return restored;
   } catch { return initialState(); }
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, initialState, loadGame, liquid, wealth, portfolio, completed, chapter, income, upgradeCost, JOBS, STOCKS, SAVE_KEY, EXTRA_COSTUMES } from '../src/model.js';
+import { act, initialState, loadGame, liquid, wealth, portfolio, completed, chapter, income, upgradeCost, JOBS, STOCKS, SAVE_KEY, EXTRA_COSTUMES, POSEIDON_COSTUME } from '../src/model.js';
 
 const run = (state, ...actions) => actions.reduce((s, a) => act(s, a), state);
 const started = (character = 'anna') => act(initialState(), { type: 'start', character });
@@ -202,7 +202,7 @@ test('all extra skins are available immediately and remain selected after saving
 test('old v1 saves retain progress and gain the new skins and mission fields', () => {
   const state = act(starterDone(), { type: 'purchase', asset: 'house' });
   state.costumes = state.costumes.filter(c => !EXTRA_COSTUMES.includes(c));
-  delete state.location; delete state.financeQuests;
+  delete state.location; delete state.financeQuests; delete state.poseidonDefeated;
   const restored = loadGame({ getItem: () => JSON.stringify(state) });
   assert.equal(restored.started, true);
   assert.equal(restored.stage, state.stage);
@@ -211,6 +211,8 @@ test('old v1 saves retain progress and gain the new skins and mission fields', (
   assert.deepEqual(restored.shifts, state.shifts);
   assert.deepEqual(restored.ledger, state.ledger);
   assert.deepEqual(restored.financeQuests, []);
+  assert.equal(restored.poseidonDefeated, false);
+  assert.equal(restored.costumes.includes(POSEIDON_COSTUME), false);
   assert.equal(restored.location, 'city');
   assert.deepEqual(restored.costumes, [...state.costumes, ...EXTRA_COSTUMES]);
   const lunar = loadGame({ getItem: () => JSON.stringify({ ...state, stage: 'moon' }) });
@@ -233,4 +235,54 @@ test('save validation rejects invalid new locations and finance mission progress
     const restored = loadGame({ getItem: () => JSON.stringify({ ...started(), ...fields }) });
     assert.equal(restored.started, false);
   }
+});
+
+test('Atlantic City can be visited early without advancing the story or unlocking Moon travel', () => {
+  const state = { ...started(), wallet: 123, savings: 456, financeQuests: ['budget'] };
+  const underwater = act(state, { type: 'travel', location: 'atlantic' });
+  assert.deepEqual(underwater, { ...state, location: 'atlantic' });
+  assert.deepEqual(loadGame({ getItem: () => JSON.stringify(underwater) }), underwater);
+  assert.deepEqual(act(underwater, { type: 'travel', location: 'city' }), state);
+  assert.throws(() => act(underwater, { type: 'travel', location: 'moon' }), /first Moon adventure/);
+  assert.throws(() => act(initialState(), { type: 'travel', location: 'atlantic' }));
+  for (const stage of ['timeskip', 'robbery', 'moon']) {
+    assert.throws(() => act({ ...state, stage }, { type: 'travel', location: 'atlantic' }));
+    assert.equal(loadGame({ getItem: () => JSON.stringify({ ...underwater, stage }) }).started, false);
+  }
+});
+
+test('Poseidon outfit unlocks only after the Atlantic victory and persists without repeat rewards', () => {
+  const state = started();
+  assert.equal(state.poseidonDefeated, false);
+  assert.ok(!state.costumes.includes(POSEIDON_COSTUME));
+  assert.throws(() => act(state, { type: 'costume', costume: POSEIDON_COSTUME }), /unlock/);
+  assert.throws(() => act(state, { type: 'defeatPoseidon' }), /Atlantic City/);
+  const underwater = act(state, { type: 'travel', location: 'atlantic' });
+  const won = act(underwater, { type: 'defeatPoseidon' });
+  assert.equal(underwater.poseidonDefeated, false, 'original state is immutable');
+  assert.equal(won.poseidonDefeated, true);
+  assert.equal(won.costume, POSEIDON_COSTUME);
+  assert.equal(won.costumes.filter(c => c === POSEIDON_COSTUME).length, 1);
+  assert.equal(won.wallet, state.wallet, 'the reward is the skin');
+  const changed = act(won, { type: 'costume', costume: 'Fish Llama' });
+  assert.deepEqual(act(changed, { type: 'defeatPoseidon' }), changed, 'repeat victory neither rewards nor changes outfit');
+  assert.deepEqual(loadGame({ getItem: () => JSON.stringify(won) }), won);
+  const returned = act(won, { type: 'travel', location: 'city' });
+  assert.deepEqual(loadGame({ getItem: () => JSON.stringify(returned) }), returned);
+});
+
+test('save validation prevents a locked Poseidon outfit and restores missing earned costume', () => {
+  const state = started();
+  for (const fields of [
+    { poseidonDefeated: 'yes' },
+    { poseidonDefeated: null },
+    { costumes: [...state.costumes, POSEIDON_COSTUME] },
+    { costume: POSEIDON_COSTUME, costumes: [...state.costumes, POSEIDON_COSTUME] },
+  ]) {
+    assert.equal(loadGame({ getItem: () => JSON.stringify({ ...state, ...fields }) }).started, false);
+  }
+  assert.throws(() => act({ ...state, costumes: [...state.costumes, POSEIDON_COSTUME] }, { type: 'costume', costume: POSEIDON_COSTUME }), /Defeat Poseidon/);
+  const restored = loadGame({ getItem: () => JSON.stringify({ ...state, poseidonDefeated: true }) });
+  assert.equal(restored.started, true);
+  assert.ok(restored.costumes.includes(POSEIDON_COSTUME));
 });

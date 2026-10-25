@@ -25,6 +25,18 @@ export function movementInput(keys, joy, yaw) {
 }
 
 export function missionFor(state) {
+  if (state.location === 'atlantic') {
+    const missions = financeMissions().filter(m => m.location === 'atlantic');
+    const done = missions.filter(m => state.financeQuests?.includes(m.id)).length;
+    const next = missions.find(m => !state.financeQuests?.includes(m.id));
+    return {
+      id: !state.poseidonDefeated ? 'poseidon' : next?.id || 'to-beach',
+      title: !state.poseidonDefeated ? t('The golden castle awaits', 'O castelo de ouro espera por você') : next?.title || t('Atlantic City explored!', 'Atlantic City explorada!'),
+      detail: !state.poseidonDefeated ? t('Challenge Poseidon with E. Attack with Q and dodge his waves to unlock the trident skin.', 'Desafie Poseidon com E. Ataque com Q e desvie das ondas para liberar a skin com tridente.') : next?.description || t('Return to the beach through the bubble portal.', 'Volte à praia pelo portal de bolhas.'),
+      progress: (done + Number(!!state.poseidonDefeated)) / 13,
+      count: t(`${done}/12 ocean lessons · ${state.poseidonDefeated ? 'trident unlocked' : 'defeat Poseidon'}`, `${done}/12 lições marinhas · ${state.poseidonDefeated ? 'tridente liberado' : 'derrote Poseidon'}`),
+    };
+  }
   const nextJob = advanced => JOBS.slice(advanced ? 3 : 0, advanced ? 6 : 3).find(j => !state.shifts[j.id]);
   switch (state.stage) {
     case 'beginning': {
@@ -42,7 +54,7 @@ export function missionFor(state) {
       if (state.celebration) {
         const missions = financeMissions();
         const next = missions.find(m => !state.financeQuests?.includes(m.id));
-        if (next) return { id: next.id, title: next.title, detail: next.description, progress: (state.financeQuests?.length || 0) / missions.length, count: t(`${state.financeQuests?.length || 0}/${missions.length} money missions`, `${state.financeQuests?.length || 0}/${missions.length} missões de finanças`) };
+        if (next) return { id: next.location === 'atlantic' ? 'to-atlantic' : next.id, title: next.title, detail: next.location === 'atlantic' ? t('Swim to the glowing ring at the beach and dive into Atlantic City.', 'Nade até o círculo brilhante da praia e mergulhe em Atlantic City.') : next.description, progress: (state.financeQuests?.length || 0) / missions.length, count: t(`${state.financeQuests?.length || 0}/${missions.length} money missions`, `${state.financeQuests?.length || 0}/${missions.length} missões de finanças`) };
       }
       return { id: ['picnic', 'explorer', 'helper'].find(id => !state.sideQuests.includes(id)) || (state.celebration ? undefined : 'bbq'), title: state.celebration ? t('The world is yours', 'O mundo é seu') : t('Good friends. Great adventures.', 'Bons amigos. Grandes aventuras.'), detail: state.celebration ? t('Sail, fly, dance with friends, or visit the Moon again.', 'Navegue, voe, dance com amigos ou visite a Lua de novo.') : t('Finish all three missions, then celebrate.', 'Complete as três missões e depois comemore.'), progress: state.sideQuests.length / 3, count: t(`${state.sideQuests.length}/3 missions · ${state.collectibles.length}/12 coins`, `${state.sideQuests.length}/3 missões · ${state.collectibles.length}/12 moedas`) };
     }

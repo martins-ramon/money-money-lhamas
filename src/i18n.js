@@ -32,6 +32,7 @@ const translations = new Map(Object.entries({
   'Superman': 'Superman',
   'Charlotte Katakuri': 'Charlotte Katakuri',
   'Skeleton': 'Esqueleto', 'Dragon': 'Dragão', 'Cyborg': 'Ciborgue', 'Human': 'Humano', 'Zombie': 'Zumbi',
+  'Fish Llama': 'Lhama peixe', 'Marine Llama': 'Lhama marinha', 'Poseidon Llama': 'Lhama de Poseidon',
   'Girlfriend': 'Companheira',
   'McLlama’s': 'McLlama’s',
   'Sunny Hooves School': 'Escola Cascos do Sol',
@@ -84,6 +85,7 @@ export function nameLabel(value) {
 }
 
 const ledger = {
+  'Defeated Poseidon · trident outfit unlocked': 'Poseidon derrotado · roupa com tridente desbloqueada',
   'Savings interest · 2% per shift': 'Juros da poupança · 2% por turno',
   'Moved wallet to savings': 'Dinheiro transferido para a poupança',
   'A delicious meal': 'Uma refeição deliciosa',
@@ -125,6 +127,9 @@ const errors = {
   'Reach a billion dollars first.': 'Alcance um bilhão de dólares primeiro.',
   'Finish your first Moon adventure to unlock return trips.': 'Conclua sua primeira aventura na Lua para liberar as viagens de volta.',
   'Choose the city or the Moon.': 'Escolha a cidade ou a Lua.',
+  'Choose the city or the Moon, or dive into Atlantic City.': 'Escolha a cidade ou a Lua, ou mergulhe em Atlantic City.',
+  'Face Poseidon in Atlantic City first.': 'Enfrente Poseidon em Atlantic City primeiro.',
+  'Defeat Poseidon in Atlantic City to unlock this outfit.': 'Derrote Poseidon em Atlantic City para desbloquear esta roupa.',
   'That finance mission is not available.': 'Essa missão financeira não está disponível.',
   'Answer every question before finishing the mission.': 'Responda a todas as perguntas antes de concluir a missão.',
   'That mission is not available.': 'Essa missão não está disponível.',

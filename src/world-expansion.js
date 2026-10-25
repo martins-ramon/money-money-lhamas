@@ -7,12 +7,12 @@ export const SHORE_X = 65;
 export const WATER_X = 67;
 
 // One set of boundaries is shared by walking, driving, sailing and the map.
-export function constrainAdventurePosition(position, { location = 'city', vehicle = null, airborne = false } = {}) {
+export function constrainAdventurePosition(position, { location = 'city', vehicle = null, airborne = false, swimming = false } = {}) {
   const sailing = vehicle?.type === 'boat' || vehicle?.type === 'yacht';
-  const limit = location === 'moon' ? 40 : CITY_LIMIT - (sailing ? 4 : 0);
-  if (location !== 'moon') {
+  const limit = location === 'atlantic' ? 58 : location === 'moon' ? 40 : CITY_LIMIT - (sailing ? 4 : 0);
+  if (location === 'city') {
     if (sailing) position.x = Math.max(WATER_X + 2, position.x);
-    else if (!airborne) position.x = Math.min(SHORE_X, position.x);
+    else if (!airborne && !(swimming && !vehicle)) position.x = Math.min(SHORE_X, position.x);
   }
   const radius = Math.hypot(position.x, position.z);
   if (radius > limit) { position.x *= limit / radius; position.z *= limit / radius; }
@@ -131,7 +131,7 @@ export function buildCityExpansion(world, { mat, mesh, building, car, tree, sign
   }
 
   const financePositions = [[-46, -28], [-48, 42], [34, -48], [46, 42], [-8, -50], [52, -14]];
-  FINANCE_MISSIONS.forEach((mission, i) => {
+  FINANCE_MISSIONS.filter(mission => mission.location !== 'atlantic').forEach((mission, i) => {
     const [x, z] = financePositions[i];
     const marker = new THREE.Group(); marker.position.set(x, 0, z);
     marker.add(mesh(new THREE.CylinderGeometry(0.65, 0.8, 0.45, 12), mat(0xc8b4f2), 0, 0.25, 0));
@@ -150,4 +150,11 @@ export function buildCityExpansion(world, { mat, mesh, building, car, tree, sign
   };
   portal(city, 'to-moon', 'city', 32, 35, 'Travel to the Moon');
   portal(world.moon, 'to-city', 'moon', 10, 3, 'Return to the city');
+
+  const dive = new THREE.Group(); dive.position.set(74, 0, 35);
+  const ring = mesh(new THREE.TorusGeometry(3, 0.18, 8, 32), mat(0x75fff0, { emissive: 0x38cfbf, emissiveIntensity: 0.6 }), 0, 0.18, 0);
+  ring.rotation.x = Math.PI / 2; dive.add(ring);
+  const diveSign = sign('DIVE · ATLANTIC CITY', '#75fff0'); diveSign.position.set(0, 3.8, 0); dive.add(diveSign); city.add(dive);
+  const beachSign = sign('SWIM TO ATLANTIC CITY →', '#75fff0'); beachSign.position.set(62, 3.5, 29); city.add(beachSign);
+  world.interactables.push({ id: 'to-atlantic', type: 'dive', location: 'city', label: 'Dive into Atlantic City', position: new THREE.Vector3(74, 0, 35), radius: 5 });
 }

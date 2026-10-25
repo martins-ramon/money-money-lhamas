@@ -3,6 +3,11 @@ import { FINANCE_MISSIONS, financeMissions } from './finance-missions.js';
 
 // Original labels stay stable as keys; scene objects and multiplayer IDs never change.
 const portuguese = {
+  'DIVE · ATLANTIC CITY': 'MERGULHE · ATLANTIC CITY',
+  'SWIM TO ATLANTIC CITY →': 'NADE ATÉ ATLANTIC CITY →',
+  'Dive into Atlantic City': 'Mergulhar em Atlantic City',
+  'Driving a turtle car': 'Dirigindo um carro tartaruga',
+  'Swimming': 'Nadando',
   'Food truck': 'Lanchonete móvel',
   'Clothes shop': 'Loja de roupas',
   'Your place': 'Sua casa',

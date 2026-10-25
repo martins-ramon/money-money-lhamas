@@ -4,7 +4,7 @@
 
 O jogo está disponível em **português e inglês**, com visual cartoon (estilo Looney Tunes) e uma pitada de caos à la Goat Simulator. Funciona no computador (teclado + mouse) e no celular (joystick virtual).
 
-Escolha **Português** ou **English** na tela inicial ou no menu durante a partida. No primeiro acesso, o jogo usa português quando esse é o idioma do navegador; nos demais casos, usa inglês. Sua escolha fica salva separadamente do progresso e vale nas próximas visitas. A troca é imediata: atualiza menus, instruções, missões, minigames, mensagens e placas da cidade e da Lua, sem reiniciar a partida nem desconectar da sala multiplayer. Cada jogador pode usar seu próprio idioma. A moeda continua sendo o **dólar (USD)**, com os mesmos preços e saldos; selecionar português não converte os valores para reais.
+Escolha **Português** ou **English** na tela inicial ou no menu durante a partida. No primeiro acesso, o jogo usa português quando esse é o idioma do navegador; nos demais casos, usa inglês. Sua escolha fica salva separadamente do progresso e vale nas próximas visitas. A troca é imediata: atualiza menus, instruções, missões, minigames, mensagens e placas da cidade, da Lua e de Atlantic City, sem reiniciar a partida nem desconectar da sala multiplayer. Cada jogador pode usar seu próprio idioma. A moeda continua sendo o **dólar (USD)**, com os mesmos preços e saldos; selecionar português não converte os valores para reais.
 
 ## Como rodar
 
@@ -19,7 +19,7 @@ npm test         # regras, controles, missões, veículos e salas (node --test)
 
 Requer Node.js 22.x, a partir de 22.12 (com nvm, execute `nvm use`). `npm start` também inicia o desenvolvimento. Abra http://localhost:5000 no navegador; mantenha o terminal rodando e use Ctrl+C para encerrar. Se a porta estiver ocupada, encerre o outro servidor antes de iniciar.
 
-O progresso continua salvo no `localStorage` do navegador. O multiplayer usa uma API Node.js no mesmo endereço do jogo, disponível em `dev`, `preview` e `serve`. Localmente, sem credenciais Redis, as salas ficam na memória e não exigem serviço externo. Execute `npm run build` antes de `npm run serve`; a variável `PORT` altera sua porta (padrão: 5000).
+O progresso continua salvo no `localStorage` do navegador, com a mesma chave `money-money-lhamas-v1`. Saves antigos válidos mantêm dinheiro, história, roupas e missões; recebem as duas novas skins gratuitas e os campos de Atlantic City. A vitória sobre Poseidon e sua skin também ficam salvas. O multiplayer usa uma API Node.js no mesmo endereço do jogo, disponível em `dev`, `preview` e `serve`. Localmente, sem credenciais Redis, as salas ficam na memória e não exigem serviço externo. Execute `npm run build` antes de `npm run serve`; a variável `PORT` altera sua porta (padrão: 5000).
 
 ## Hospedar na Vercel
 
@@ -43,7 +43,7 @@ O cliente faz até dez sincronizações por segundo por jogador conectado, inclu
 
 Abra **Jogar online / Play online**, escolha um nome e crie uma sala. Compartilhe o código de **seis caracteres** ou o link exibido para que os amigos entrem na mesma sala, com até **oito jogadores**. Todos devem acessar a mesma publicação do jogo; salas locais em memória não aparecem na Vercel.
 
-As salas mostram a presença, posição, roupa, dança, voo e veículo dos amigos. Para enxergar outro jogador, os dois precisam estar no mesmo lugar: cidade ou Lua. Dinheiro, missões, história e salvamento continuam independentes em cada navegador; NPCs e atividades são simulados localmente. Não há chat.
+As salas mostram a presença, posição, roupa, dança, voo, natação e veículo dos amigos, incluindo as skins marinhas e os carros tartaruga. Para enxergar outro jogador, os dois precisam estar no mesmo lugar: cidade, Lua ou Atlantic City. Dinheiro, missões, história e salvamento continuam independentes em cada navegador; NPCs, trânsito e atividades são simulados localmente. A luta contra Poseidon, o dano e o desbloqueio do tridente são individuais: ver um amigo na arena não compartilha a batalha nem a recompensa. Não há chat.
 
 A sincronização usa requisições HTTP curtas com resposta JSON completa, combinando envio de posição e recebimento dos amigos. A abertura da sala não depende de um fluxo SSE contínuo, que pode ficar retido por intermediários da hospedagem e provocar timeout. O cliente só indica conexão concluída após receber uma resposta autenticada válida.
 
@@ -57,38 +57,52 @@ O criador da sala tem o botão **Remover / Remove** ao lado dos outros jogadores
 
 | Ação | Computador | Celular |
 | --- | --- | --- |
-| Andar | WASD ou setas | Joystick (esquerda) |
+| Andar ou nadar | WASD ou setas | Joystick (esquerda) |
 | Correr | Segurar Shift | Botão **Correr / Run** (ativa/desativa) |
 | Olhar | Arrastar o mouse | Deslizar no lado direito da tela |
 | Pular | Espaço | Botão **Pular / Jump** |
+| Subir na água em Atlantic City | Espaço | Botão **Subir / Rise** |
+| Descer na água em Atlantic City | C | Botão **Descer / Descend** |
+| Mergulhar para Atlantic City, no círculo do mar | E ou C | Botão **Ação / Action** ou **Mergulhar / Dive** |
 | Interagir, entrar ou sair de veículo | E ou Enter | Botão **Ação / Action** |
 | Dirigir, pilotar ou guiar planador | WASD ou setas | Joystick |
 | Voar ou pousar com skin compatível | F | Botão **Voar / Fly** |
 | Dançar ou parar de dançar | B | Botão **Dançar / Dance** |
-| Atirar leite com Cyborg | Q | Botão **Leite / Milk** |
+| Atacar com qualquer skin, fora de veículos | Q | Botão **Atacar / Attack**; muda para **Leite**, **Tentáculo** ou **Tubarão** conforme a skin |
 | Fechar painel | Esc | Botão × |
-| Guia da cidade | M ou botão de mapa | Botão de mapa |
+| Mapa e guia do local atual | M ou botão de mapa | Botão de mapa |
 | Pausar | Esc durante a exploração | Menu |
 
 ## Experiência do jogador
 
 - Cidade ampliada para raio de 98 unidades, com novos quarteirões, parque, praia, marina e NPCs humanos adultos cartoon, incluindo banhistas e mulher de biquíni.
 - Três carros disponíveis pela cidade e o carro da primeira compra podem ser dirigidos. Barco e iate saem da marina; a ação de sair devolve o jogador e a embarcação ao cais. Três estações de planador lançam o jogador, que guia a descida até pousar.
-- Novas skins gratuitas desde o início: **Superman**, **Charlotte Katakuri** (One Piece), **Skeleton**, **Dragon**, **Cyborg**, **Human** e **Zombie**. Superman, Cyborg e Dragon voam; Cyborg tem botas propulsoras e dispara leite. O guarda-roupa preserva as fantasias desbloqueadas pela história.
+- Skins gratuitas desde o início: **Superman**, **Charlotte Katakuri** (One Piece), **Skeleton**, **Dragon**, **Cyborg**, **Human**, **Zombie**, **Lhama Peixe** e **Lhama Marinha**. Superman, Cyborg e Dragon voam fora de Atlantic City; Cyborg tem botas propulsoras e dispara leite. A Lhama Marinha dispara tentáculos de kraken. A **Lhama de Poseidon**, com tridente nas costas e ataques de tubarão, só é liberada ao derrotar Poseidon. O guarda-roupa preserva as fantasias desbloqueadas pela história.
+- Todas as skins nadam e atacam. Entre no mar pela praia para nadar na superfície; em Atlantic City, também é possível subir e descer na água. Ataques atordoam moradores e os leões e tigres que empurram o jogador no parque.
+- **Atlantic City**, a cidade perdida debaixo d’água, tem ruas, corais, ruínas, homens-peixe, sereias adultas cartoon com biquíni de alças finas e o castelo de ouro onde Poseidon mora. O **Sr. Barriga Tritão** aparece somente nesse mapa, patrulha o recife e empurra quem se aproxima.
+- Três **carros tartaruga** podem ser dirigidos em Atlantic City. NPCs dirigem carros nas ruas da cidade e carros tartaruga debaixo d’água; o trânsito dá passagem ao jogador.
 - Botão de dança e controles de habilidades também no celular. Andar interrompe a dança. Durante a cobrança do Seu Barriga, é preciso resolver a perseguição antes de entrar em veículos ou ativar o voo.
 - Depois de liberar o mundo livre, viaje novamente à Lua e volte pelo menu ou pelos portais, mantendo dinheiro, missões e progresso da história.
-- Seis missões extras de finanças, disponíveis desde o começo, sobre orçamento, desconto, poupança, preço por unidade, troco e planejamento de uma barraca de limonada. Cada uma tem duas perguntas explicadas e paga **$150 uma única vez**; revisitar pelo catálogo permite estudar novamente sem repetir a recompensa.
+- **18 missões de finanças**: as seis originais na cidade e 12 novas em Atlantic City, também acessíveis pelo catálogo. As originais tratam de orçamento, desconto, poupança, preço por unidade, troco e uma barraca de limonada. As novas cobrem reserva de emergência, prioridades, juros simples e compostos, parcelamento, assinaturas, aluguel, ponto de equilíbrio, frete, depreciação, meta coletiva e conferência de recibos. Cada uma tem duas perguntas explicadas em português e inglês e paga **$150 uma única vez**; revisitar pelo catálogo permite estudar novamente sem repetir a recompensa.
 - Tela inicial com continuação da partida, personagens 3D e controle de som.
 - Missão atual com progresso, bússola, distância e um feixe dourado no destino. O mapa permite escolher outro local; durante a cobrança, o guia aponta para o arbusto mais próximo. A indicação é em linha reta: contorne os prédios pelas ruas.
 - Movimento relativo à câmera, aceleração suave, corrida, tolerância de 150 ms para o comando de salto e gravidade menor na Lua.
 - Partículas de coleta, salto e impacto; celebrações de empregos, roupas, compras, melhorias e missões. O conjunto de partículas 3D é limitado a 96 instâncias.
-- Menus pausam a exploração e a cobrança. Ao sair da aba durante a exploração, o jogo abre o menu. A empresa continua rendendo no painel de negócios, preservando a quantidade de ações digitada; fica pausada nos demais painéis.
+- Menus pausam a exploração, a cobrança e o combate com Poseidon. Ao sair da aba durante a exploração, o jogo abre o menu. A empresa continua rendendo no painel de negócios, preservando a quantidade de ações digitada; fica pausada nos demais painéis.
 - Minigames com progresso visível, atalhos numéricos para as opções e setas na patrulha policial. Desistir encerra as esperas da atividade e não paga salário.
 - Defesa da mansão com quatro fases, recorde de sequência, botão de pausa e ataque com Espaço ao ladrão mais próximo. A pausa também funciona com Esc; após trocar de aba, é preciso retomar manualmente.
 - Menu com qualidade **High/Balanced**, movimento reduzido e opção de esconder o minimapa. Preferências são salvas separadamente da partida; o jogo continua funcionando se o armazenamento estiver bloqueado.
 - Navegação dos painéis pelo teclado, foco visível e mensagens acessíveis. O churrasco final é liberado após as três missões secundárias.
 
-`npm test` executa testes das regras, direções em diferentes ângulos da câmera, joystick, missões, preferências, limites dos veículos, viagens e salas multiplayer, além dos minigames em DOM simulado. Esses testes não substituem a validação visual em navegadores e celulares reais.
+`npm test` executa testes das regras, direções em diferentes ângulos da câmera, joystick, missões, preferências, limites dos veículos, natação, combate, desbloqueio de skins, viagens e salas multiplayer, além dos minigames em DOM simulado. Esses testes não substituem a validação visual em navegadores e celulares reais.
+
+## Explorar Atlantic City
+
+Abra o mapa com **M**, marque **Mergulhar em Atlantic City** e siga a bússola até a praia. Entre na água e nade até o círculo brilhante no mar; use **E** ou **C** para mergulhar. A visita fica disponível desde o começo da aventura, sem precisar concluir a viagem à Lua. Durante as sequências da história, conclua a atividade antes de viajar. Para voltar, use **E / Ação** no portal **Voltar à praia**, junto à entrada da cidade submarina. O mapa de Atlantic City permite marcar o castelo, veículos, missões e a saída.
+
+No castelo de ouro, aproxime-se do marcador **Desafiar Poseidon** e pressione **E / Ação**. Derrote os três subordinados para remover a proteção do rei, depois ataque Poseidon com **Q** ou o botão na tela. A lhama atira na direção para a qual está virada; mova-se para mirar e saia dos círculos brilhantes antes que as ondas atinjam o local. A interface mostra sua vida, a vida do chefe e os guardas restantes.
+
+**Esc / Menu** pausa a luta. Se sua vida acabar, você reaparece na entrada com a vida restaurada, sem perder dinheiro, e pode desafiar o chefe novamente. Sair da arena reinicia a tentativa. Ao vencer, a skin **Lhama de Poseidon** é desbloqueada e equipada, com tridente nas costas e projéteis de tubarão. Essa conquista é permanente no save e não concede recompensas repetidas.
 
 ## A jornada
 
@@ -104,7 +118,7 @@ Bônus: 12 moedas da sorte escondidas pela cidade e lhamas cidadãs que saem voa
 
 | Conceito | Onde aparece |
 | --- | --- |
-| Juros simples e compostos | Cofrinho rende 2% por turno sobre o saldo (juros sobre juros) |
+| Juros simples e compostos | Cofrinho rende 2% por turno; lições dos corais e das conchas em Atlantic City |
 | Renda × gasto × poupança | Decisão guardar/gastar após cada pagamento; relatório com taxa de poupança |
 | Meta financeira | Juntar $1.000 para o primeiro bem; quantos turnos faltam |
 | Ativos e depreciação | Casa × carro na primeira compra |
@@ -116,6 +130,10 @@ Bônus: 12 moedas da sorte escondidas pela cidade e lhamas cidadãs que saem voa
 | Orçamento e troco | Plan your pocket money e Check your change |
 | Preço por unidade | Compare the snack packs |
 | Planejamento de um pequeno negócio | Run a lemonade stand |
+| Reserva e prioridades | Reserva de emergência do recife e Pérolas e prioridades |
+| Custo total e cobranças recorrentes | Parcelamento da tartaruga, assinaturas da sereia e entrega pelo oceano |
+| Custos fixos e ponto de equilíbrio | Orçamento do Sr. Barriga Tritão e loja de algas |
+| Meta coletiva e revisão de compras | Restauração do castelo de ouro e recibo do kraken |
 
 ## Estrutura do código
 
@@ -135,8 +153,9 @@ src/model.js                estado, salvamento e regras financeiras
 src/world.js                cena 3D, locomoção, veículos e habilidades
 src/world-localization.js   rótulos do mundo e placas traduzidos sem recriar a cena
 src/world-expansion.js      novos bairros, praia, marina, portais e limites
+src/atlantic.js             cidade submarina, Poseidon, moradores, trânsito e animais
 src/avatars.js              skins e humanos cartoon construídos em Three.js
-src/finance-missions.js     catálogo das seis missões financeiras
+src/finance-missions.js     catálogo bilíngue das 18 missões financeiras
 src/multiplayer.js          cliente de salas e sincronização de presença
 src/peers.js                representação 3D dos outros jogadores
 src/minigames.js            empregos, defesa da mansão e quiz
@@ -151,6 +170,10 @@ tests/minigames.test.js     interações e pausa em DOM simulado
 tests/mansion.test.js       entrada e enquadramento da mansão
 tests/world-adventure.test.js limites, veículos, voo e localização
 tests/world-language.test.js troca de idioma preservando mundo, veículos e texturas
+tests/atlantic.test.js      mapa submarino, combate, pausa, derrota, vitória e NPCs
+tests/atlantic-controls.test.js natação, mergulho, ataques e carros tartaruga
+tests/atlantic-avatars.test.js skins marinhas, tridente e projéteis
+tests/atlantic-presence.test.js presença multiplayer em Atlantic City
 tests/multiplayer.test.js   salas, clientes e servidor de produção
 ```
 

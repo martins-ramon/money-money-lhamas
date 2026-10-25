@@ -23,13 +23,18 @@ export function celebrate(root, title, detail, reducedMotion = false) {
 
 export function drawMap(canvas, world, target, state, rent) {
   const ctx = canvas.getContext('2d'); if (!ctx) return;
-  const onMoon = world.location === 'moon';
-  const size = canvas.width, span = onMoon ? 104 : 210, scale = size / span, center = size / 2;
+  const onMoon = world.location === 'moon', underwater = world.location === 'atlantic';
+  const size = canvas.width, span = underwater ? 125 : onMoon ? 104 : 210, scale = size / span, center = size / 2;
   const offsetX = 0;
   const point = p => [center + (p.x - offsetX) * scale, center + p.z * scale];
   ctx.clearRect(0, 0, size, size);
-  ctx.fillStyle = onMoon ? '#23263f' : '#deebcf'; ctx.fillRect(0, 0, size, size);
-  if (!onMoon) {
+  ctx.fillStyle = underwater ? '#12657e' : onMoon ? '#23263f' : '#deebcf'; ctx.fillRect(0, 0, size, size);
+  if (underwater) {
+    ctx.strokeStyle = '#74d5d5'; ctx.lineWidth = 5 * scale;
+    for (const z of [-18, 12]) { ctx.beginPath(); ctx.moveTo(center - 42 * scale, center + z * scale); ctx.lineTo(center + 42 * scale, center + z * scale); ctx.stroke(); }
+    ctx.fillStyle = '#f6b53d'; ctx.fillRect(center - 12 * scale, center - 44 * scale, 24 * scale, 16 * scale);
+  }
+  if (!onMoon && !underwater) {
     ctx.fillStyle = '#eed8a3'; ctx.fillRect(point({ x: 55, z: 0 })[0], 0, size, size);
     ctx.fillStyle = '#6bbbd5'; ctx.fillRect(point({ x: 67, z: 0 })[0], 0, size, size);
     ctx.strokeStyle = '#b0b2ab'; ctx.lineWidth = 6 * scale;
@@ -53,7 +58,7 @@ export function drawMap(canvas, world, target, state, rent) {
     ctx.beginPath(); ctx.arc(x, y, selected ? 7 : 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     if (jobIndex >= 0) { ctx.fillStyle = '#2b2a33'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center'; ctx.fillText(String(jobIndex + 1), x, y + 3); }
   }
-  if (rent && !onMoon) {
+  if (rent && !onMoon && !underwater) {
     ctx.fillStyle = '#43885b';
     world.hiding.forEach(p => { const [x, y] = point(p); ctx.fillRect(x - 3, y - 3, 6, 6); });
     const [x, y] = point(world.barriga.position); ctx.fillStyle = '#de4d48'; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
@@ -66,5 +71,5 @@ export function drawMap(canvas, world, target, state, rent) {
   ctx.save(); ctx.translate(x, y); ctx.rotate(-world.yaw);
   ctx.fillStyle = '#2b2a33'; ctx.strokeStyle = '#fffaf0'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(6, 6); ctx.lineTo(0, 3); ctx.lineTo(-6, 6); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
-  ctx.fillStyle = onMoon ? '#fffaf0' : '#2b2a33'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.fillText('N', center, 13);
+  ctx.fillStyle = onMoon || underwater ? '#fffaf0' : '#2b2a33'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.fillText('N', center, 13);
 }
